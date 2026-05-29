@@ -1,0 +1,979 @@
+if game.PlaceId == 96063223159256 then
+
+    -- Services
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local RunService = game:GetService("RunService")
+    local player = Players.LocalPlayer
+    local LocalPlayer = player
+
+    -- Load libraries
+    local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+    local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+    local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+    local window = Fluent:CreateWindow({
+        Title = "ARB: Script v2 (Testing)",
+        SubTitle = "by xyro",
+        TabWidth = 160,
+        Size = UDim2.fromOffset(580, 460),
+        Acrylic = true,
+        Theme = "Dark",
+        MinimizeKey = Enum.KeyCode.LeftControl
+    })
+
+    local tabs = {
+        Spinning = window:AddTab({Title = "Spinning", Icon = "rotate-ccw"}),
+        Players = window:AddTab({Title = "Players", Icon = "users"}),
+        Meditation = window:AddTab({Title = "Meditation", Icon = "circle"}),
+        AutoFarm = window:AddTab({Title = "Auto Farm", Icon = "swords"}),
+        NPCs = window:AddTab({Title = "NPCs", Icon = "user"}),
+        Scrolls = window:AddTab({Title = "Scrolls", Icon = "book"}),
+        Codes = window:AddTab({Title = "Codes", Icon = "gift"}),
+        Settings = window:AddTab({Title = "Settings", Icon = "settings"})
+    }
+
+    local Families = {"Yakoda","Lozai","Leifong","Tarrlok","Sozin","Hama","Gyatso","Vaan"}
+    local Traits = {"Agile","Deadly","Evil","Athlete","Limb","Prodigy","Talented"}
+    local Elements = {"Water","Earth","Air","Fire"}
+    local SpinCodes = {"wherestheavatarSpins","25SpinsYay"}
+    local ElementCodes = {"flameohotman","thatsroughbuddy","rewrittingmaybesoon","wherestheavatarSpins","ElementRerollYay","25SpinsYay"}
+
+    local function getHumanoidRootPart()
+        local character = player.Character
+        return character and character:FindFirstChild("HumanoidRootPart")
+    end
+
+    -- =======================
+    -- AUTO GRIP NPCs
+    -- =======================
+
+    local autoGripNPCsEnabled = false
+    local npcGripInterval = 0.01
+    local npcGripBurstCount = 6
+    local npcGripMaxDistance = 45
+
+    local function getClosestGripNPC(maxDistance)
+        local hrp = getHumanoidRootPart()
+        local livesFolder = workspace:FindFirstChild("Lives") or workspace:FindFirstChild("lives")
+        if not (hrp and livesFolder) then return nil, nil end
+
+        local closestNPC
+        local shortestDistance = maxDistance or math.huge
+
+        for _, npc in ipairs(livesFolder:GetChildren()) do
+            if npc.Name == "RegularNationNpc" or npc.Name == "RegulationNationNpc" then
+                local npcHRP = npc:FindFirstChild("HumanoidRootPart")
+                local npcHumanoid = npc:FindFirstChildOfClass("Humanoid")
+                if npcHRP and npcHumanoid and npcHumanoid.Health > 0 then
+                    local dist = (npcHRP.Position - hrp.Position).Magnitude
+                    if dist <= shortestDistance then
+                        shortestDistance = dist
+                        closestNPC = npc
+                    end
+                end
+            end
+        end
+
+        return closestNPC, hrp
+    end
+
+    local function setAutoGripNPCState(enabled)
+        if autoGripNPCsEnabled == enabled then return end
+        autoGripNPCsEnabled = enabled
+
+        if enabled then
+            task.spawn(function()
+                while autoGripNPCsEnabled do
+                    local closestNPC, hrp = getClosestGripNPC(npcGripMaxDistance)
+                    local gripEvent = player.Character and player.Character:FindFirstChild("Scripts")
+                        and player.Character.Scripts:FindFirstChild("Server")
+                        and player.Character.Scripts.Server:FindFirstChild("Grip")
+                        and player.Character.Scripts.Server.Grip:FindFirstChild("Event")
+
+                    if closestNPC and hrp and gripEvent then
+                        local args = {"Kill", closestNPC, hrp.Position + Vector3.new(1, 2, 0)}
+                        for _ = 1, npcGripBurstCount do
+                            gripEvent:FireServer(unpack(args))
+                        end
+                    end
+
+                    task.wait(npcGripInterval)
+                end
+            end)
+        end
+    end
+
+    tabs.NPCs:AddToggle("AutoGripToggle", {
+        Title = "Auto Grip NPCs",
+        Default = false,
+        Description = "Grips nearest NPC"
+    }):OnChanged(function(enabled)
+        setAutoGripNPCState(enabled)
+    end)
+
+    tabs.NPCs:AddSlider("NpcGripIntervalSlider", {
+        Title = "NPC Grip Interval (s)",
+        Description = "Higher value = less lag and lower ping load",
+        Default = npcGripInterval,
+        Min = 0.01,
+        Max = 1,
+        Rounding = 2
+    }):OnChanged(function(value)
+        npcGripInterval = value
+    end)
+
+    tabs.NPCs:AddSlider("NpcGripBurstSlider", {
+        Title = "NPC Grip Burst",
+        Description = "How many grip fires per interval",
+        Default = npcGripBurstCount,
+        Min = 1,
+        Max = 6,
+        Rounding = 0
+    }):OnChanged(function(value)
+        npcGripBurstCount = value
+    end)
+
+    tabs.NPCs:AddSlider("NpcGripDistanceSlider", {
+        Title = "NPC Grip Max Distance",
+        Description = "Only grips NPCs within this distance",
+        Default = npcGripMaxDistance,
+        Min = 10,
+        Max = 150,
+        Rounding = 0
+    }):OnChanged(function(value)
+        npcGripMaxDistance = value
+    end)
+
+    -- =======================
+    -- AUTO FARM
+    -- =======================
+
+    local autoFarmEnabled = false
+    local autoFarmBehindDistance = 1
+    local autoFarmNpcDistance = 500
+    local autoFarmTeleportInterval = 0.2
+    local autoFarmM1Interval = 0.5
+
+    local function performM1()
+        local vim = game:GetService("VirtualInputManager")
+        vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+        vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+    end
+
+    local function teleportBehindNPC(targetNPC)
+        local myHRP = getHumanoidRootPart()
+        local npcHRP = targetNPC and targetNPC:FindFirstChild("HumanoidRootPart")
+        if not (myHRP and npcHRP) then return false end
+
+        local behindOffset = npcHRP.CFrame.LookVector * -autoFarmBehindDistance
+        local targetPos = npcHRP.Position + behindOffset
+        myHRP.CFrame = CFrame.new(targetPos, npcHRP.Position)
+        return true
+    end
+
+    tabs.AutoFarm:AddToggle("AutoFarmToggle", {
+        Title = "Auto Farm",
+        Default = false,
+        Description = "TP behind NPC, do 8 M1s, then auto grip for 6s"
+    }):OnChanged(function(enabled)
+        autoFarmEnabled = enabled
+
+        if enabled then
+            task.spawn(function()
+                while autoFarmEnabled do
+                    local m1Count = 0
+
+                    while autoFarmEnabled and m1Count < 8 do
+                        local targetNPC = getClosestGripNPC(autoFarmNpcDistance)
+                        if not targetNPC then
+                            task.wait(0.2)
+                        else
+                            local performedInWindow = 0
+                            local attackWindowStart = tick()
+                            local nextTeleportAt = attackWindowStart
+                            local nextM1At = attackWindowStart
+
+                            while autoFarmEnabled and m1Count < 8 and performedInWindow < 4 and (tick() - attackWindowStart) < 2 do
+                                local now = tick()
+
+                                if now >= nextTeleportAt then
+                                    teleportBehindNPC(targetNPC)
+                                    nextTeleportAt = nextTeleportAt + autoFarmTeleportInterval
+                                end
+
+                                if now >= nextM1At then
+                                    if teleportBehindNPC(targetNPC) then
+                                        performM1()
+                                        m1Count = m1Count + 1
+                                        performedInWindow = performedInWindow + 1
+                                    end
+                                    nextM1At = nextM1At + autoFarmM1Interval
+                                end
+
+                                task.wait(0.03)
+                            end
+
+                            if autoFarmEnabled and m1Count < 8 then
+                                task.wait(2)
+                            end
+                        end
+                    end
+
+                    if autoFarmEnabled then
+                        setAutoGripNPCState(true)
+                        task.wait(6)
+                        setAutoGripNPCState(false)
+                    end
+                end
+            end)
+        else
+            setAutoGripNPCState(false)
+        end
+    end)
+
+    tabs.AutoFarm:AddSlider("AutoFarmNPCDistanceSlider", {
+        Title = "Auto Farm NPC Distance",
+        Description = "Target NPC range for auto farm",
+        Default = autoFarmNpcDistance,
+        Min = 10,
+        Max = 500,
+        Rounding = 0
+    }):OnChanged(function(value)
+        autoFarmNpcDistance = value
+    end)
+
+    tabs.AutoFarm:AddSlider("AutoFarmBehindDistanceSlider", {
+        Title = "Behind Distance",
+        Description = "How far behind NPC to teleport",
+        Default = autoFarmBehindDistance,
+        Min = 1,
+        Max = 8,
+        Rounding = 1
+    }):OnChanged(function(value)
+        autoFarmBehindDistance = value
+    end)
+
+    -- Auto Grip Players
+    local autoGripPlayersEnabled = false
+    local whitelist = {["enhancedxyro"] = true}
+
+    tabs.Players:AddToggle("AutoGripPlayersToggle", {
+        Title = "Auto Grip Players",
+        Default = false,
+        Description = "Spams grip on nearest player not in whitelist within 20 studs"
+    }):OnChanged(function(enabled)
+        autoGripPlayersEnabled = enabled
+        task.spawn(function()
+            while autoGripPlayersEnabled do
+                local localPlayer = game.Players.LocalPlayer
+                local hrp = getHumanoidRootPart()
+                if not hrp then
+                    task.wait(0.5)
+                else
+                    local targetPlayerCharacter, closestDistance = nil, 20
+                    for _, player in ipairs(game.Players:GetPlayers()) do
+                        if player ~= localPlayer and not whitelist[player.Name] and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            local playerHRP = player.Character.HumanoidRootPart
+                            local dist = (playerHRP.Position - hrp.Position).Magnitude
+                            if dist <= closestDistance then
+                                targetPlayerCharacter = player.Character
+                                closestDistance = dist
+                            end
+                        end
+                    end
+
+                    if targetPlayerCharacter then
+                        local args = {"Kill", targetPlayerCharacter, hrp.Position + Vector3.new(1, 2, 0)}
+                        localPlayer.Character.Scripts.Server.Grip.Event:FireServer(unpack(args))
+                    end
+                    task.wait(0.1)
+                end
+            end
+        end)
+    end)
+
+    -- Hitbox Expander
+    local hitboxExpanderEnabled = false
+    local hitboxSizeStuds = 8
+    local hitboxColor = Color3.fromRGB(255, 0, 0)
+    local hitboxTransparency = 0.5
+    local hitboxPassthroughEnabled = true
+    local hitboxNonCollideableEnabled = true
+    local hitboxConnection
+    local expandedHitboxes = {}
+
+    local function removeHitbox(character)
+        local hitboxPart = expandedHitboxes[character]
+        if hitboxPart then
+            hitboxPart:Destroy()
+            expandedHitboxes[character] = nil
+        end
+    end
+
+    local function clearAllHitboxes()
+        for character in pairs(expandedHitboxes) do
+            removeHitbox(character)
+        end
+    end
+
+    local function updateHitboxProperties(hitboxPart)
+        hitboxPart.Size = Vector3.new(hitboxSizeStuds, hitboxSizeStuds, hitboxSizeStuds)
+        hitboxPart.Color = hitboxColor
+        hitboxPart.Transparency = hitboxTransparency
+        hitboxPart.CanCollide = not hitboxPassthroughEnabled
+        hitboxPart.CanTouch = not hitboxNonCollideableEnabled
+    end
+
+    local function refreshAllExpandedHitboxes()
+        for _, hitboxPart in pairs(expandedHitboxes) do
+            updateHitboxProperties(hitboxPart)
+        end
+    end
+
+    local function getOrCreateHitboxForCharacter(targetCharacter)
+        local targetHRP = targetCharacter:FindFirstChild("HumanoidRootPart")
+        if not targetHRP then return end
+
+        local hitboxPart = expandedHitboxes[targetCharacter]
+        if not (hitboxPart and hitboxPart.Parent == targetCharacter) then
+            removeHitbox(targetCharacter)
+
+            hitboxPart = Instance.new("Part")
+            hitboxPart.Name = "ExpandedHitbox"
+            hitboxPart.Material = Enum.Material.ForceField
+            hitboxPart.Shape = Enum.PartType.Block
+            hitboxPart.Anchored = false
+            hitboxPart.Massless = true
+            hitboxPart.CanQuery = false
+
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0 = hitboxPart
+            weld.Part1 = targetHRP
+            weld.Parent = hitboxPart
+
+            hitboxPart.CFrame = targetHRP.CFrame
+            hitboxPart.Parent = targetCharacter
+
+            expandedHitboxes[targetCharacter] = hitboxPart
+        end
+
+        updateHitboxProperties(hitboxPart)
+    end
+
+    local function setHitboxExpanderState(enabled)
+        hitboxExpanderEnabled = enabled
+
+        if hitboxConnection then
+            hitboxConnection:Disconnect()
+            hitboxConnection = nil
+        end
+
+        if not enabled then
+            clearAllHitboxes()
+            return
+        end
+
+        hitboxConnection = RunService.Heartbeat:Connect(function()
+            for _, targetPlayer in ipairs(Players:GetPlayers()) do
+                if targetPlayer ~= LocalPlayer and targetPlayer.Character then
+                    getOrCreateHitboxForCharacter(targetPlayer.Character)
+                end
+            end
+
+            for character in pairs(expandedHitboxes) do
+                if not character.Parent then
+                    removeHitbox(character)
+                end
+            end
+        end)
+    end
+
+    -- ESP
+    local playerESPEnabled = false
+    local npcESPEnabled = false
+    local npcESPMaxDistance = 1000
+    local espConnection
+    local playerESPBillboards = {}
+    local npcESPBillboards = {}
+
+    local function removeESPBillboard(mapTable, key)
+        local billboard = mapTable[key]
+        if billboard then
+            billboard:Destroy()
+            mapTable[key] = nil
+        end
+    end
+
+    local function clearESPBillboards(mapTable)
+        for key in pairs(mapTable) do
+            removeESPBillboard(mapTable, key)
+        end
+    end
+
+    local function createESPBillboard(adorneePart, text)
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "ESPBillboard"
+        billboard.AlwaysOnTop = true
+        billboard.Size = UDim2.new(0, 120, 0, 30)
+        billboard.StudsOffset = Vector3.new(0, 3, 0)
+        billboard.Adornee = adorneePart
+
+        local label = Instance.new("TextLabel")
+        label.Name = "Label"
+        label.Size = UDim2.new(1, 0, 1, 0)
+        label.BackgroundTransparency = 1
+        label.TextScaled = true
+        label.Font = Enum.Font.GothamBold
+        label.TextStrokeTransparency = 0
+        label.Text = text
+        label.TextColor3 = hitboxColor
+        label.Parent = billboard
+
+        return billboard
+    end
+
+    local function refreshESPColors()
+        for _, billboard in pairs(playerESPBillboards) do
+            local label = billboard:FindFirstChild("Label")
+            if label then
+                label.TextColor3 = hitboxColor
+            end
+        end
+        for _, billboard in pairs(npcESPBillboards) do
+            local label = billboard:FindFirstChild("Label")
+            if label then
+                label.TextColor3 = hitboxColor
+            end
+        end
+    end
+
+    local function updateESPState()
+        if espConnection then
+            espConnection:Disconnect()
+            espConnection = nil
+        end
+
+        if not playerESPEnabled and not npcESPEnabled then
+            clearESPBillboards(playerESPBillboards)
+            clearESPBillboards(npcESPBillboards)
+            return
+        end
+
+        espConnection = RunService.Heartbeat:Connect(function()
+            local localHRP = getHumanoidRootPart()
+
+            if playerESPEnabled then
+                for _, targetPlayer in ipairs(Players:GetPlayers()) do
+                    if targetPlayer ~= LocalPlayer and targetPlayer.Character then
+                        local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        if targetHRP then
+                            local billboard = playerESPBillboards[targetPlayer.Character]
+                            if not (billboard and billboard.Parent == targetHRP) then
+                                removeESPBillboard(playerESPBillboards, targetPlayer.Character)
+                                billboard = createESPBillboard(targetHRP, targetPlayer.Name)
+                                billboard.Parent = targetHRP
+                                playerESPBillboards[targetPlayer.Character] = billboard
+                            end
+                        end
+                    end
+                end
+
+                for character in pairs(playerESPBillboards) do
+                    if not character.Parent then
+                        removeESPBillboard(playerESPBillboards, character)
+                    end
+                end
+            else
+                clearESPBillboards(playerESPBillboards)
+            end
+
+            if npcESPEnabled then
+                local livesFolder = workspace:FindFirstChild("Lives") or workspace:FindFirstChild("lives")
+                if livesFolder and localHRP then
+                    for _, npc in ipairs(livesFolder:GetChildren()) do
+                        if npc.Name == "RegularNationNpc" or npc.Name == "RegulationNationNpc" then
+                            local npcHRP = npc:FindFirstChild("HumanoidRootPart")
+                            if npcHRP then
+                                local withinRange = (npcHRP.Position - localHRP.Position).Magnitude <= npcESPMaxDistance
+                                if withinRange then
+                                    local billboard = npcESPBillboards[npc]
+                                    if not (billboard and billboard.Parent == npcHRP) then
+                                        removeESPBillboard(npcESPBillboards, npc)
+                                        billboard = createESPBillboard(npcHRP, "NPC")
+                                        billboard.Parent = npcHRP
+                                        npcESPBillboards[npc] = billboard
+                                    end
+                                else
+                                    removeESPBillboard(npcESPBillboards, npc)
+                                end
+                            end
+                        end
+                    end
+                else
+                    clearESPBillboards(npcESPBillboards)
+                end
+
+                for npc in pairs(npcESPBillboards) do
+                    if not npc.Parent then
+                        removeESPBillboard(npcESPBillboards, npc)
+                    end
+                end
+            else
+                clearESPBillboards(npcESPBillboards)
+            end
+        end)
+    end
+
+
+    tabs.Players:AddToggle("HitboxExpanderToggle", {
+        Title = "Hitbox Expander",
+        Default = false,
+        Description = "Expands visible player hitboxes"
+    }):OnChanged(function(enabled)
+        setHitboxExpanderState(enabled)
+    end)
+
+    tabs.Players:AddSlider("HitboxSizeSlider", {
+        Title = "Hitbox Size (Studs)",
+        Description = "Changes expanded hitbox size",
+        Default = hitboxSizeStuds,
+        Min = 2,
+        Max = 25,
+        Rounding = 0
+    }):OnChanged(function(value)
+        hitboxSizeStuds = value
+        refreshAllExpandedHitboxes()
+    end)
+
+    tabs.Players:AddColorpicker("HitboxColorPicker", {
+        Title = "Hitbox / ESP Color",
+        Default = hitboxColor
+    }):OnChanged(function(value)
+        hitboxColor = value
+        refreshAllExpandedHitboxes()
+        refreshESPColors()
+    end)
+
+    tabs.Players:AddSlider("HitboxTransparencySlider", {
+        Title = "Hitbox Transparency",
+        Description = "Changes expanded hitbox transparency",
+        Default = hitboxTransparency,
+        Min = 0,
+        Max = 1,
+        Rounding = 2
+    }):OnChanged(function(value)
+        hitboxTransparency = value
+        refreshAllExpandedHitboxes()
+    end)
+
+    tabs.Players:AddToggle("HitboxPassthroughToggle", {
+        Title = "Hitbox Passthrough",
+        Default = hitboxPassthroughEnabled,
+        Description = "Lets players pass through the expanded hitbox"
+    }):OnChanged(function(value)
+        hitboxPassthroughEnabled = value
+        refreshAllExpandedHitboxes()
+    end)
+
+    tabs.Players:AddToggle("HitboxNonCollideableToggle", {
+        Title = "Hitbox Non-Collideable",
+        Default = hitboxNonCollideableEnabled,
+        Description = "Disables touch collisions on expanded hitbox"
+    }):OnChanged(function(value)
+        hitboxNonCollideableEnabled = value
+        refreshAllExpandedHitboxes()
+    end)
+
+    tabs.Players:AddToggle("PlayerESPToggle", {
+        Title = "Player ESP",
+        Default = false,
+        Description = "Shows ESP nametags for players"
+    }):OnChanged(function(enabled)
+        playerESPEnabled = enabled
+        updateESPState()
+    end)
+
+    tabs.NPCs:AddToggle("NpcESPToggle", {
+        Title = "NPC Esp",
+        Default = false,
+        Description = "Shows NPC nametag ESP"
+    }):OnChanged(function(enabled)
+        npcESPEnabled = enabled
+        updateESPState()
+    end)
+
+    tabs.NPCs:AddSlider("NpcESPRangeSlider", {
+        Title = "NPC ESP Max Distance",
+        Description = "Shows only NPCs within this range",
+        Default = npcESPMaxDistance,
+        Min = 50,
+        Max = 5000,
+        Rounding = 0
+    }):OnChanged(function(value)
+        npcESPMaxDistance = value
+    end)
+
+    -- Auto Meditate
+    tabs.Meditation:AddToggle("AutoMeditateToggle", {
+        Title = "Auto Meditate",
+        Default = false,
+        Description = "Automatically meditates for you"
+    }):OnChanged(function(enabled)
+        task.spawn(function()
+            while enabled do
+                game.ReplicatedStorage.RemoteEvents.Meditate:FireServer("Start")
+                for _ = 1, 5 do
+                    game.ReplicatedStorage.RemoteEvents["Create Key"]:FireServer("Complete")
+                    task.wait(0.1)
+                end
+                task.wait(1.5)
+            end
+        end)
+    end)
+
+    -- Auto Spin
+    local autoSpinFamilyEnabled = false
+    local autoSpinTraitEnabled = false
+    local selectedFamilies = {}
+    local selectedTraits = {}
+
+    local function spinForFamily()
+        local spinRemote = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("Spin")
+        while autoSpinFamilyEnabled and not Fluent.Unloaded do
+            spinRemote:FireServer("Family")
+            task.wait(7.5)
+            local familyValue = LocalPlayer:FindFirstChild("Family") and LocalPlayer.Family.Value or ""
+            for _, fam in ipairs(selectedFamilies) do
+                if familyValue:find(fam) then
+                    autoSpinFamilyEnabled = false
+                    Fluent:Notify({Title = "Family Match", Content = "You rolled family: " .. fam, Duration = 5})
+                    return
+                end
+            end
+            task.wait(0.5)
+        end
+    end
+
+    local function spinForTrait()
+        local spinRemote = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("Spin")
+        while autoSpinTraitEnabled and not Fluent.Unloaded do
+            spinRemote:FireServer("Trait")
+            task.wait(7.5)
+            local traitStat = LocalPlayer:FindFirstChild("Player Stats") and LocalPlayer["Player Stats"]:FindFirstChild("Trait")
+            local traitValue = traitStat and traitStat.Value or ""
+            for _, trait in ipairs(selectedTraits) do
+                if traitValue:find(trait) then
+                    autoSpinTraitEnabled = false
+                    Fluent:Notify({Title = "Trait Match", Content = "You rolled trait: " .. trait, Duration = 5})
+                    return
+                end
+            end
+            task.wait(0.5)
+        end
+    end
+
+    tabs.Spinning:AddParagraph({Title = "Auto Spin Settings", Content = "Select families and traits to spin for, then toggle each separately."})
+
+    tabs.Spinning:AddDropdown("FamilyDropdown", {
+        Title = "Select Families",
+        Description = "Choose families to spin for (multiple allowed)",
+        Values = Families,
+        Multi = true,
+        Default = {}
+    }):OnChanged(function(value)
+        selectedFamilies = {}
+        for fam, selected in pairs(value) do
+            if selected then table.insert(selectedFamilies, fam) end
+        end
+    end)
+
+    tabs.Spinning:AddDropdown("TraitDropdown", {
+        Title = "Select Traits",
+        Description = "Choose traits to spin for (multiple allowed)",
+        Values = Traits,
+        Multi = true,
+        Default = {}
+    }):OnChanged(function(value)
+        selectedTraits = {}
+        for trait, selected in pairs(value) do
+            if selected then table.insert(selectedTraits, trait) end
+        end
+    end)
+
+    tabs.Spinning:AddToggle("AutoSpinFamilyToggle", {
+        Title = "Auto Spin Family",
+        Description = "Spins only for selected families",
+        Default = false
+    }):OnChanged(function(state)
+        autoSpinFamilyEnabled = state
+        if state then task.spawn(spinForFamily) end
+    end)
+
+    tabs.Spinning:AddToggle("AutoSpinTraitToggle", {
+        Title = "Auto Spin Trait",
+        Description = "Spins only for selected traits",
+        Default = false
+    }):OnChanged(function(state)
+        autoSpinTraitEnabled = state
+        if state then task.spawn(spinForTrait) end
+    end)
+
+    tabs.Codes:AddToggle("AutoRedeemSpin", {
+        Title = "Auto Redeem Spin Codes",
+        Description = "Redeem all spin codes automatically once",
+        Default = false
+    }):OnChanged(function(state)
+        if state then
+            task.spawn(function()
+                for _, code in ipairs(SpinCodes) do
+                    ReplicatedStorage.RemoteEvents.RedeemCode:InvokeServer(code)
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end)
+
+    local targetElement = Elements[1]
+
+    tabs.Codes:AddDropdown("ElementDropdown", {
+        Title = "Select Target Element",
+        Description = "Select element to stop auto redeem",
+        Values = Elements,
+        Multi = false,
+        Default = 1
+    }):OnChanged(function(value)
+        targetElement = value
+    end)
+
+    tabs.Codes:AddToggle("AutoRedeemElement", {
+        Title = "Auto Redeem Element Codes",
+        Description = "Redeem element codes until target element is rolled",
+        Default = false
+    }):OnChanged(function(state)
+        if state then
+            task.spawn(function()
+                while state do
+                    ReplicatedStorage.RemoteEvents.RedeemCode:InvokeServer(ElementCodes[math.random(1, #ElementCodes)])
+                    task.wait(1)
+                    local bendingVal = LocalPlayer:FindFirstChild("Bending") and LocalPlayer.Bending.Value or ""
+                    if bendingVal == targetElement then
+                        Fluent:Notify({Title = "Element Match", Content = "You got element: " .. targetElement, Duration = 5})
+                        break
+                    end
+                end
+            end)
+        end
+    end)
+
+   -- Scrolls
+    tabs.Scrolls:AddButton({
+        Title = "Get Water Wave",
+        Description = "Click for Water Wave Scroll",
+        Callback = function()
+            local v23 = 1423 - (630 + 793) -- 0
+            local v24
+            while true do
+                if v23 == 0 then
+                    v24 = {"Equip", {Item = "Water Wave Scroll"}}
+                    game:GetService("Players").LocalPlayer
+                        :WaitForChild("PlayerGui")
+                        :WaitForChild("InventoryStore")
+                        :WaitForChild("Adjust")
+                        :WaitForChild("RemoteEvent")
+                        :FireServer(unpack(v24))
+                    break
+                end
+            end
+        end
+    })
+
+        tabs.Scrolls:AddButton({
+        Title = "Get Air Tornado",
+        Description = "Click for Air Tornado Scroll",
+        Callback = function()
+            local v23 = 1423 - (630 + 793) -- 0
+            local v24
+            while true do
+                if v23 == 0 then
+                    v24 = {"Equip", {Item = "Air Tornado Scroll"}}
+                    game:GetService("Players").LocalPlayer
+                        :WaitForChild("PlayerGui")
+                        :WaitForChild("InventoryStore")
+                        :WaitForChild("Adjust")
+                        :WaitForChild("RemoteEvent")
+                        :FireServer(unpack(v24))
+                    break
+                end
+            end
+        end
+    })
+
+        tabs.Scrolls:AddButton({
+        Title = "Get Comet Jab",
+        Description = "Click for Comet Jab Scroll",
+        Callback = function()
+            local v23 = 1423 - (630 + 793) -- 0
+            local v24
+            while true do
+                if v23 == 0 then
+                    v24 = {"Equip", {Item = "Comet Jab Scroll"}}
+                    game:GetService("Players").LocalPlayer
+                        :WaitForChild("PlayerGui")
+                        :WaitForChild("InventoryStore")
+                        :WaitForChild("Adjust")
+                        :WaitForChild("RemoteEvent")
+                        :FireServer(unpack(v24))
+                    break
+                end
+            end
+        end
+    })
+
+        tabs.Scrolls:AddButton({
+        Title = "Get Earth Trap",
+        Description = "Click for Earth Trap Scroll",
+        Callback = function()
+            local v23 = 1423 - (630 + 793) -- 0
+            local v24
+            while true do
+                if v23 == 0 then
+                    v24 = {"Equip", {Item = "Earth Trap Scroll"}}
+                    game:GetService("Players").LocalPlayer
+                        :WaitForChild("PlayerGui")
+                        :WaitForChild("InventoryStore")
+                        :WaitForChild("Adjust")
+                        :WaitForChild("RemoteEvent")
+                        :FireServer(unpack(v24))
+                    break
+                end
+            end
+        end
+    })
+
+        tabs.Scrolls:AddButton({
+        Title = "Get Fire Step",
+        Description = "Click for Fire Step",
+        Callback = function()
+            local v23 = 1423 - (630 + 793) -- 0
+            local v24
+            while true do
+                if v23 == 0 then
+                    v24 = {"Equip", {Item = "Fire Step Scroll"}}
+                    game:GetService("Players").LocalPlayer
+                        :WaitForChild("PlayerGui")
+                        :WaitForChild("InventoryStore")
+                        :WaitForChild("Adjust")
+                        :WaitForChild("RemoteEvent")
+                        :FireServer(unpack(v24))
+                    break
+                end
+            end
+        end
+    })
+
+        tabs.Scrolls:AddButton({
+        Title = "Get Water Barrage",
+        Description = "Click for Water Barrage Scroll",
+        Callback = function()
+            local v23 = 1423 - (630 + 793) -- 0
+            local v24
+            while true do
+                if v23 == 0 then
+                    v24 = {"Equip", {Item = "Water Barrage Scroll"}}
+                    game:GetService("Players").LocalPlayer
+                        :WaitForChild("PlayerGui")
+                        :WaitForChild("InventoryStore")
+                        :WaitForChild("Adjust")
+                        :WaitForChild("RemoteEvent")
+                        :FireServer(unpack(v24))
+                    break
+                end
+            end
+        end
+    })
+
+        tabs.Scrolls:AddButton({
+        Title = "Get Earth Launch",
+        Description = "Click for Earth Launch Scroll",
+        Callback = function()
+            local v23 = 1423 - (630 + 793) -- 0
+            local v24
+            while true do
+                if v23 == 0 then
+                    v24 = {"Equip", {Item = "Earth Launch Scroll"}}
+                    game:GetService("Players").LocalPlayer
+                        :WaitForChild("PlayerGui")
+                        :WaitForChild("InventoryStore")
+                        :WaitForChild("Adjust")
+                        :WaitForChild("RemoteEvent")
+                        :FireServer(unpack(v24))
+                    break
+                end
+            end
+        end
+    })
+
+        tabs.Scrolls:AddButton({
+        Title = "Get Blood Grab",
+        Description = "Click for Blood Grab Scroll",
+        Callback = function()
+            local v23 = 1423 - (630 + 793) -- 0
+            local v24
+            while true do
+                if v23 == 0 then
+                    v24 = {"Equip", {Item = "Blood Grab Scroll"}}
+                    game:GetService("Players").LocalPlayer
+                        :WaitForChild("PlayerGui")
+                        :WaitForChild("InventoryStore")
+                        :WaitForChild("Adjust")
+                        :WaitForChild("RemoteEvent")
+                        :FireServer(unpack(v24))
+                    break
+                end
+            end
+        end
+    })
+
+        tabs.Scrolls:AddButton({
+        Title = "Get Lava Line",
+        Description = "Click for Lava Line",
+        Callback = function()
+            local v23 = 1423 - (630 + 793) -- 0
+            local v24
+            while true do
+                if v23 == 0 then
+                    v24 = {"Equip", {Item = "Lava Line Scroll"}}
+                    game:GetService("Players").LocalPlayer
+                        :WaitForChild("PlayerGui")
+                        :WaitForChild("InventoryStore")
+                        :WaitForChild("Adjust")
+                        :WaitForChild("RemoteEvent")
+                        :FireServer(unpack(v24))
+                    break
+                end
+            end
+        end
+    })
+
+    -- Final init
+    SaveManager:SetLibrary(Fluent)
+    InterfaceManager:SetLibrary(Fluent)
+    SaveManager:IgnoreThemeSettings()
+    SaveManager:SetIgnoreIndexes({})
+    InterfaceManager:SetFolder("FluentScriptHub")
+    SaveManager:SetFolder("FluentScriptHub/specific-game")
+    InterfaceManager:BuildInterfaceSection(tabs.Settings)
+    SaveManager:BuildConfigSection(tabs.Settings)
+
+    window:SelectTab(1)
+
+    Fluent:Notify({
+        Title = "Fluent",
+        Content = "Script Loaded Successfully!",
+        Duration = 8
+    })
+
+    SaveManager:LoadAutoloadConfig()
+    
+end
