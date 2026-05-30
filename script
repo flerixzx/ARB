@@ -63,12 +63,12 @@ if game.PlaceId == 96063223159256 then
 
     local function isNPCAlive(npc)
         local npcHumanoid = getNPCHumanoid(npc)
-        return npcHumanoid and npcHumanoid.Health > 0
+        return npcHumanoid and npcHumanoid.Health > 10
     end
 
     local function isNPCDowned(npc)
         local npcHumanoid = getNPCHumanoid(npc)
-        return npcHumanoid and npcHumanoid.Health <= 0
+        return npcHumanoid and npcHumanoid.Health <= 10
     end
 
     local function getClosestNPC(maxDistance, healthCheck)
