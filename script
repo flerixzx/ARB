@@ -53,7 +53,25 @@ if game.PlaceId == 96063223159256 then
     local npcGripBurstCount = 6
     local npcGripMaxDistance = 45
 
-    local function getClosestGripNPC(maxDistance)
+    local function isTargetNPC(npc)
+        return npc and (npc.Name == "RegularNationNpc" or npc.Name == "RegulationNationNpc")
+    end
+
+    local function getNPCHumanoid(npc)
+        return npc and npc:FindFirstChildOfClass("Humanoid")
+    end
+
+    local function isNPCAlive(npc)
+        local npcHumanoid = getNPCHumanoid(npc)
+        return npcHumanoid and npcHumanoid.Health > 10
+    end
+
+    local function isNPCDowned(npc)
+        local npcHumanoid = getNPCHumanoid(npc)
+        return npcHumanoid and npcHumanoid.Health <= 10
+    end
+
+    local function getClosestNPC(maxDistance, healthCheck)
         local hrp = getHumanoidRootPart()
         local livesFolder = workspace:FindFirstChild("Lives") or workspace:FindFirstChild("lives")
         if not (hrp and livesFolder) then return nil, nil end
@@ -62,10 +80,9 @@ if game.PlaceId == 96063223159256 then
         local shortestDistance = maxDistance or math.huge
 
         for _, npc in ipairs(livesFolder:GetChildren()) do
-            if npc.Name == "RegularNationNpc" or npc.Name == "RegulationNationNpc" then
+            if isTargetNPC(npc) then
                 local npcHRP = npc:FindFirstChild("HumanoidRootPart")
-                local npcHumanoid = npc:FindFirstChildOfClass("Humanoid")
-                if npcHRP and npcHumanoid and npcHumanoid.Health > 0 then
+                if npcHRP and (not healthCheck or healthCheck(npc)) then
                     local dist = (npcHRP.Position - hrp.Position).Magnitude
                     if dist <= shortestDistance then
                         shortestDistance = dist
@@ -78,6 +95,32 @@ if game.PlaceId == 96063223159256 then
         return closestNPC, hrp
     end
 
+    local function getClosestFarmNPC(maxDistance)
+        return getClosestNPC(maxDistance, isNPCAlive)
+    end
+
+    local function getClosestGripNPC(maxDistance)
+        return getClosestNPC(maxDistance, isNPCDowned)
+    end
+
+    local function getGripEvent()
+        return player.Character and player.Character:FindFirstChild("Scripts")
+            and player.Character.Scripts:FindFirstChild("Server")
+            and player.Character.Scripts.Server:FindFirstChild("Grip")
+            and player.Character.Scripts.Server.Grip:FindFirstChild("Event")
+    end
+
+    local function fireGripOnNPC(targetNPC, hrp)
+        local gripEvent = getGripEvent()
+        if not (targetNPC and targetNPC.Parent and hrp and gripEvent) then return false end
+
+        local args = {"Kill", targetNPC, hrp.Position + Vector3.new(1, 2, 0)}
+        for _ = 1, npcGripBurstCount do
+            gripEvent:FireServer(unpack(args))
+        end
+        return true
+    end
+
     local function setAutoGripNPCState(enabled)
         if autoGripNPCsEnabled == enabled then return end
         autoGripNPCsEnabled = enabled
@@ -86,16 +129,8 @@ if game.PlaceId == 96063223159256 then
             task.spawn(function()
                 while autoGripNPCsEnabled do
                     local closestNPC, hrp = getClosestGripNPC(npcGripMaxDistance)
-                    local gripEvent = player.Character and player.Character:FindFirstChild("Scripts")
-                        and player.Character.Scripts:FindFirstChild("Server")
-                        and player.Character.Scripts.Server:FindFirstChild("Grip")
-                        and player.Character.Scripts.Server.Grip:FindFirstChild("Event")
-
-                    if closestNPC and hrp and gripEvent then
-                        local args = {"Kill", closestNPC, hrp.Position + Vector3.new(1, 2, 0)}
-                        for _ = 1, npcGripBurstCount do
-                            gripEvent:FireServer(unpack(args))
-                        end
+                    if closestNPC and hrp then
+                        fireGripOnNPC(closestNPC, hrp)
                     end
 
                     task.wait(npcGripInterval)
@@ -154,6 +189,7 @@ if game.PlaceId == 96063223159256 then
     local autoFarmNpcDistance = 500
     local autoFarmTeleportInterval = 0.2
     local autoFarmM1Interval = 0.5
+    local currentAutoFarmNPC
 
     local function performM1()
         local vim = game:GetService("VirtualInputManager")
@@ -172,6 +208,18 @@ if game.PlaceId == 96063223159256 then
         return true
     end
 
+    local function gripAutoFarmNPC(targetNPC)
+        local gripStartedAt = tick()
+
+        while autoFarmEnabled and targetNPC and targetNPC.Parent and isNPCDowned(targetNPC) and (tick() - gripStartedAt) < 6 do
+            local hrp = getHumanoidRootPart()
+            if hrp then
+                fireGripOnNPC(targetNPC, hrp)
+            end
+            task.wait(npcGripInterval)
+        end
+    end
+
     tabs.AutoFarm:AddToggle("AutoFarmToggle", {
         Title = "Auto Farm",
         Default = false,
@@ -182,52 +230,48 @@ if game.PlaceId == 96063223159256 then
         if enabled then
             task.spawn(function()
                 while autoFarmEnabled do
-                    local m1Count = 0
-
-                    while autoFarmEnabled and m1Count < 10 do
-                        local targetNPC = getClosestGripNPC(autoFarmNpcDistance)
-                        if not targetNPC then
-                            task.wait(0.2)
-                        else
-                            local performedInWindow = 0
-                            local attackWindowStart = tick()
-                            local nextTeleportAt = attackWindowStart
-                            local nextM1At = attackWindowStart
-
-                            while autoFarmEnabled and m1Count < 10 and performedInWindow < 4 and (tick() - attackWindowStart) < 2 do
-                                local now = tick()
-
-                                if now >= nextTeleportAt then
-                                    teleportBehindNPC(targetNPC)
-                                    nextTeleportAt = nextTeleportAt + autoFarmTeleportInterval
-                                end
-
-                                if now >= nextM1At then
-                                    if teleportBehindNPC(targetNPC) then
-                                        performM1()
-                                        m1Count = m1Count + 1
-                                        performedInWindow = performedInWindow + 1
-                                    end
-                                    nextM1At = nextM1At + autoFarmM1Interval
-                                end
-
-                                task.wait(0.03)
-                            end
-
-                            if autoFarmEnabled and m1Count < 10 then
-                                task.wait(2)
-                            end
-                        end
+                    local targetNPC = currentAutoFarmNPC
+                    if not (targetNPC and targetNPC.Parent and isNPCAlive(targetNPC)) then
+                        targetNPC = getClosestFarmNPC(autoFarmNpcDistance)
+                        currentAutoFarmNPC = targetNPC
                     end
 
-                    if autoFarmEnabled then
-                        setAutoGripNPCState(true)
-                        task.wait(6)
-                        setAutoGripNPCState(false)
+                    if not targetNPC then
+                        task.wait(0.2)
+                    else
+                        local nextTeleportAt = tick()
+                        local nextM1At = tick()
+
+                        while autoFarmEnabled and targetNPC.Parent and isNPCAlive(targetNPC) do
+                            local now = tick()
+
+                            if now >= nextTeleportAt then
+                                teleportBehindNPC(targetNPC)
+                                nextTeleportAt = nextTeleportAt + autoFarmTeleportInterval
+                            end
+
+                            if now >= nextM1At then
+                                if isNPCAlive(targetNPC) and teleportBehindNPC(targetNPC) then
+                                    performM1()
+                                end
+                                nextM1At = nextM1At + autoFarmM1Interval
+                            end
+
+                            task.wait(0.03)
+                        end
+
+                        if autoFarmEnabled and targetNPC.Parent and isNPCDowned(targetNPC) then
+                            gripAutoFarmNPC(targetNPC)
+                        end
+
+                        if currentAutoFarmNPC == targetNPC then
+                            currentAutoFarmNPC = nil
+                        end
                     end
                 end
             end)
         else
+            currentAutoFarmNPC = nil
             setAutoGripNPCState(false)
         end
     end)
@@ -415,7 +459,7 @@ if game.PlaceId == 96063223159256 then
         local billboard = Instance.new("BillboardGui")
         billboard.Name = "ESPBillboard"
         billboard.AlwaysOnTop = true
-        billboard.Size = UDim2.new(0, 120, 0, 30)
+        billboard.Size = UDim2.new(0, 160, 0, 40)
         billboard.StudsOffset = Vector3.new(0, 3, 0)
         billboard.Adornee = adorneePart
 
@@ -431,6 +475,24 @@ if game.PlaceId == 96063223159256 then
         label.Parent = billboard
 
         return billboard
+    end
+
+
+    local function formatHealthText(name, humanoid)
+        if not humanoid then
+            return name .. " | HP: ?"
+        end
+
+        local health = math.max(0, math.floor(humanoid.Health + 0.5))
+        local maxHealth = math.max(0, math.floor(humanoid.MaxHealth + 0.5))
+        return string.format("%s | HP: %d/%d", name, health, maxHealth)
+    end
+
+    local function setESPText(billboard, text)
+        local label = billboard and billboard:FindFirstChild("Label")
+        if label then
+            label.Text = text
+        end
     end
 
     local function refreshESPColors()
@@ -467,13 +529,17 @@ if game.PlaceId == 96063223159256 then
                 for _, targetPlayer in ipairs(Players:GetPlayers()) do
                     if targetPlayer ~= LocalPlayer and targetPlayer.Character then
                         local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        local targetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
                         if targetHRP then
                             local billboard = playerESPBillboards[targetPlayer.Character]
+                            local espText = formatHealthText(targetPlayer.Name, targetHumanoid)
                             if not (billboard and billboard.Parent == targetHRP) then
                                 removeESPBillboard(playerESPBillboards, targetPlayer.Character)
-                                billboard = createESPBillboard(targetHRP, targetPlayer.Name)
+                                billboard = createESPBillboard(targetHRP, espText)
                                 billboard.Parent = targetHRP
                                 playerESPBillboards[targetPlayer.Character] = billboard
+                            else
+                                setESPText(billboard, espText)
                             end
                         end
                     end
@@ -492,17 +558,21 @@ if game.PlaceId == 96063223159256 then
                 local livesFolder = workspace:FindFirstChild("Lives") or workspace:FindFirstChild("lives")
                 if livesFolder and localHRP then
                     for _, npc in ipairs(livesFolder:GetChildren()) do
-                        if npc.Name == "RegularNationNpc" or npc.Name == "RegulationNationNpc" then
+                        if isTargetNPC(npc) then
                             local npcHRP = npc:FindFirstChild("HumanoidRootPart")
+                            local npcHumanoid = getNPCHumanoid(npc)
                             if npcHRP then
                                 local withinRange = (npcHRP.Position - localHRP.Position).Magnitude <= npcESPMaxDistance
                                 if withinRange then
                                     local billboard = npcESPBillboards[npc]
+                                    local espText = formatHealthText("NPC", npcHumanoid)
                                     if not (billboard and billboard.Parent == npcHRP) then
                                         removeESPBillboard(npcESPBillboards, npc)
-                                        billboard = createESPBillboard(npcHRP, "NPC")
+                                        billboard = createESPBillboard(npcHRP, espText)
                                         billboard.Parent = npcHRP
                                         npcESPBillboards[npc] = billboard
+                                    else
+                                        setESPText(billboard, espText)
                                     end
                                 else
                                     removeESPBillboard(npcESPBillboards, npc)
