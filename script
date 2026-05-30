@@ -63,12 +63,12 @@ if game.PlaceId == 96063223159256 then
 
     local function isNPCAlive(npc)
         local npcHumanoid = getNPCHumanoid(npc)
-        return npcHumanoid and npcHumanoid.Health > 0
+        return npcHumanoid and npcHumanoid.Health > 10
     end
 
     local function isNPCDowned(npc)
         local npcHumanoid = getNPCHumanoid(npc)
-        return npcHumanoid and npcHumanoid.Health <= 0
+        return npcHumanoid and npcHumanoid.Health <= 10
     end
 
     local function getClosestNPC(maxDistance, healthCheck)
@@ -336,12 +336,12 @@ if game.PlaceId == 96063223159256 then
 
     local function isCharacterAlive(character)
         local humanoid = getCharacterHumanoid(character)
-        return humanoid and humanoid.Health > 0
+        return humanoid and humanoid.Health > 10
     end
 
     local function isCharacterDowned(character)
         local humanoid = getCharacterHumanoid(character)
-        return humanoid and humanoid.Health <= 0
+        return humanoid and humanoid.Health <= 10
     end
 
     local function fireGripOnCharacter(targetCharacter, hrp)
