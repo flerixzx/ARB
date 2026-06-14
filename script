@@ -7,30 +7,169 @@ if game.PlaceId == 96063223159256 then
     local player = Players.LocalPlayer
     local LocalPlayer = player
 
-    -- Load libraries
-    local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-    local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-    local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+    -- Load Mercury and expose a small Fluent-compatible adapter for the existing script UI code.
+    local Mercury = loadstring(game:HttpGet("https://raw.githubusercontent.com/deeeity/mercury-lib/master/src.lua"))()
 
-    local window = Fluent:CreateWindow({
-        Title = "ARB: Script v2 (Testing)",
-        SubTitle = "by xyro",
-        TabWidth = 160,
+    local function asArray(values)
+        local array = {}
+        for _, value in pairs(values or {}) do
+            table.insert(array, value)
+        end
+        return array
+    end
+
+    local function createChangedHandle(callback)
+        return {
+            OnChanged = function(_, changedCallback)
+                callback:Set(changedCallback)
+            end
+        }
+    end
+
+    local function createMercuryTab(tab)
+        return {
+            AddToggle = function(_, _, options)
+                options = options or {}
+                local callback = {Current = function() end}
+                function callback:Set(fn)
+                    self.Current = fn or function() end
+                end
+
+                tab:Toggle({
+                    Name = options.Title,
+                    StartingState = options.Default or false,
+                    Description = options.Description,
+                    Callback = function(state)
+                        callback.Current(state)
+                    end
+                })
+
+                return createChangedHandle(callback)
+            end,
+            AddSlider = function(_, _, options)
+                options = options or {}
+                local callback = {Current = function() end}
+                function callback:Set(fn)
+                    self.Current = fn or function() end
+                end
+
+                tab:Slider({
+                    Name = options.Title,
+                    Description = options.Description,
+                    Default = options.Default,
+                    Min = options.Min,
+                    Max = options.Max,
+                    Callback = function(value)
+                        local rounding = options.Rounding
+                        if rounding then
+                            local scale = 10 ^ rounding
+                            value = math.floor((value * scale) + 0.5) / scale
+                        end
+                        callback.Current(value)
+                    end
+                })
+
+                return createChangedHandle(callback)
+            end,
+            AddDropdown = function(_, _, options)
+                options = options or {}
+                local callback = {Current = function() end}
+                function callback:Set(fn)
+                    self.Current = fn or function() end
+                end
+
+                local dropdown = tab:Dropdown({
+                    Name = options.Title,
+                    Description = options.Description,
+                    StartingText = "Select...",
+                    Items = asArray(options.Values),
+                    Callback = function(value)
+                        callback.Current(value)
+                    end
+                })
+
+                return {
+                    OnChanged = function(_, changedCallback)
+                        callback:Set(changedCallback)
+                    end,
+                    SetValues = function(_, values)
+                        if dropdown then
+                            if dropdown.Clear then
+                                dropdown:Clear()
+                            end
+                            if dropdown.AddItems then
+                                dropdown:AddItems(asArray(values))
+                            end
+                        end
+                    end
+                }
+            end,
+            AddButton = function(_, options)
+                options = options or {}
+                tab:Button({
+                    Name = options.Title,
+                    Description = options.Description,
+                    Callback = options.Callback
+                })
+            end,
+            AddParagraph = function(_, options)
+                options = options or {}
+                tab:Label({
+                    Text = options.Title,
+                    Description = options.Content
+                })
+            end,
+            AddColorpicker = function(_, _, options)
+                options = options or {}
+                local callback = {Current = function() end}
+                function callback:Set(fn)
+                    self.Current = fn or function() end
+                end
+
+                if tab.ColorPicker then
+                    tab:ColorPicker({
+                        Name = options.Title,
+                        Default = options.Default,
+                        Callback = function(value)
+                            callback.Current(value)
+                        end
+                    })
+                else
+                    tab:Label({Text = options.Title, Description = "Color picker unavailable in Mercury."})
+                end
+
+                return createChangedHandle(callback)
+            end
+        }
+    end
+
+    local window = Mercury:Create({
+        Name = "ARB: Script v2 (Testing)",
         Size = UDim2.fromOffset(580, 460),
-        Acrylic = true,
-        Theme = "Dark",
-        MinimizeKey = Enum.KeyCode.LeftControl
+        Theme = Mercury.Themes.Dark,
+        Link = "https://github.com/deeeity/mercury-lib"
     })
 
     local tabs = {
-        Spinning = window:AddTab({Title = "Spinning", Icon = "rotate-ccw"}),
-        Players = window:AddTab({Title = "Players", Icon = "users"}),
-        Meditation = window:AddTab({Title = "Meditation", Icon = "circle"}),
-        AutoFarm = window:AddTab({Title = "Auto Farm", Icon = "swords"}),
-        NPCs = window:AddTab({Title = "NPCs", Icon = "user"}),
-        Scrolls = window:AddTab({Title = "Scrolls", Icon = "book"}),
-        Codes = window:AddTab({Title = "Codes", Icon = "gift"}),
-        Settings = window:AddTab({Title = "Settings", Icon = "settings"})
+        Spinning = createMercuryTab(window:Tab({Name = "Spinning"})),
+        Players = createMercuryTab(window:Tab({Name = "Players"})),
+        Meditation = createMercuryTab(window:Tab({Name = "Meditation"})),
+        AutoFarm = createMercuryTab(window:Tab({Name = "Auto Farm"})),
+        NPCs = createMercuryTab(window:Tab({Name = "NPCs"})),
+        Scrolls = createMercuryTab(window:Tab({Name = "Scrolls"})),
+        Codes = createMercuryTab(window:Tab({Name = "Codes"})),
+        Settings = createMercuryTab(window:Tab({Name = "Settings"}))
+    }
+
+    local Fluent = {
+        Unloaded = false,
+        Notify = function(_, options)
+            Mercury:Notification({
+                Title = options.Title,
+                Text = options.Content,
+                Duration = options.Duration
+            })
+        end
     }
 
     local Families = {"Yakoda","Lozai","Leifong","Tarrlok","Sozin","Hama","Gyatso","Vaan"}
@@ -1314,23 +1453,10 @@ if game.PlaceId == 96063223159256 then
     })
 
     -- Final init
-    SaveManager:SetLibrary(Fluent)
-    InterfaceManager:SetLibrary(Fluent)
-    SaveManager:IgnoreThemeSettings()
-    SaveManager:SetIgnoreIndexes({})
-    InterfaceManager:SetFolder("FluentScriptHub")
-    SaveManager:SetFolder("FluentScriptHub/specific-game")
-    InterfaceManager:BuildInterfaceSection(tabs.Settings)
-    SaveManager:BuildConfigSection(tabs.Settings)
-
-    window:SelectTab(1)
-
     Fluent:Notify({
-        Title = "Fluent",
+        Title = "Mercury",
         Content = "Script Loaded Successfully!",
         Duration = 8
     })
-
-    SaveManager:LoadAutoloadConfig()
     
 end
