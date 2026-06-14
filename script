@@ -49,8 +49,8 @@ if game.PlaceId == 96063223159256 then
     -- =======================
 
     local autoGripNPCsEnabled = false
-    local npcGripInterval = 0.01
-    local npcGripBurstCount = 6
+    local npcGripInterval = 0.005
+    local npcGripBurstCount = 8
     local npcGripMaxDistance = 45
 
     local function isTargetNPC(npc)
@@ -151,9 +151,9 @@ if game.PlaceId == 96063223159256 then
         Title = "NPC Grip Interval (s)",
         Description = "Higher value = less lag and lower ping load",
         Default = npcGripInterval,
-        Min = 0.01,
+        Min = 0.005,
         Max = 1,
-        Rounding = 2
+        Rounding = 3
     }):OnChanged(function(value)
         npcGripInterval = value
     end)
@@ -163,7 +163,7 @@ if game.PlaceId == 96063223159256 then
         Description = "How many grip fires per interval",
         Default = npcGripBurstCount,
         Min = 1,
-        Max = 6,
+        Max = 12,
         Rounding = 0
     }):OnChanged(function(value)
         npcGripBurstCount = value
@@ -459,50 +459,156 @@ if game.PlaceId == 96063223159256 then
 
     -- Auto Grip Players
     local autoGripPlayersEnabled = false
+    local playerGripMaxDistance = 20
+    local playerGripInterval = 0.005
+    local playerGripBurstCount = 8
     local whitelist = {["enhancedxyro"] = true}
+
+    local function getClosestGripPlayerCharacter(maxDistance)
+        local hrp = getHumanoidRootPart()
+        if not hrp then return nil, nil end
+
+        local closestCharacter
+        local closestDistance = maxDistance or math.huge
+
+        for _, targetPlayer in ipairs(Players:GetPlayers()) do
+            local character = targetPlayer.Character
+            local targetHRP = character and character:FindFirstChild("HumanoidRootPart")
+            if targetPlayer ~= LocalPlayer and not whitelist[targetPlayer.Name] and targetHRP and isCharacterDowned(character) then
+                local distance = (targetHRP.Position - hrp.Position).Magnitude
+                if distance <= closestDistance then
+                    closestCharacter = character
+                    closestDistance = distance
+                end
+            end
+        end
+
+        return closestCharacter, hrp
+    end
+
+    local function fireGripOnPlayerCharacter(targetCharacter, hrp)
+        local gripEvent = getGripEvent()
+        if not (targetCharacter and targetCharacter.Parent and hrp and gripEvent) then return false end
+
+        local args = {"Kill", targetCharacter, hrp.Position + Vector3.new(1, 2, 0)}
+        for _ = 1, playerGripBurstCount do
+            gripEvent:FireServer(unpack(args))
+        end
+        return true
+    end
 
     tabs.Players:AddToggle("AutoGripPlayersToggle", {
         Title = "Auto Grip Players",
         Default = false,
-        Description = "Spams grip on nearest player not in whitelist within 20 studs"
+        Description = "Fast-grips the nearest downed non-whitelisted player within range"
     }):OnChanged(function(enabled)
+        if autoGripPlayersEnabled == enabled then return end
         autoGripPlayersEnabled = enabled
-        task.spawn(function()
-            while autoGripPlayersEnabled do
-                local localPlayer = game.Players.LocalPlayer
-                local hrp = getHumanoidRootPart()
-                if not hrp then
-                    task.wait(0.5)
-                else
-                    local targetPlayerCharacter, closestDistance = nil, 20
-                    for _, player in ipairs(game.Players:GetPlayers()) do
-                        if player ~= localPlayer and not whitelist[player.Name] and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                            local playerHRP = player.Character.HumanoidRootPart
-                            local dist = (playerHRP.Position - hrp.Position).Magnitude
-                            if dist <= closestDistance then
-                                targetPlayerCharacter = player.Character
-                                closestDistance = dist
-                            end
-                        end
-                    end
 
-                    if targetPlayerCharacter then
-                        local args = {"Kill", targetPlayerCharacter, hrp.Position + Vector3.new(1, 2, 0)}
-                        localPlayer.Character.Scripts.Server.Grip.Event:FireServer(unpack(args))
+        if enabled then
+            task.spawn(function()
+                while autoGripPlayersEnabled do
+                    local targetCharacter, hrp = getClosestGripPlayerCharacter(playerGripMaxDistance)
+                    if targetCharacter and hrp then
+                        fireGripOnPlayerCharacter(targetCharacter, hrp)
                     end
-                    task.wait(0.1)
+                    task.wait(playerGripInterval)
                 end
-            end
-        end)
+            end)
+        end
     end)
+
+    tabs.Players:AddSlider("PlayerGripDistanceSlider", {
+        Title = "Player Grip Max Distance",
+        Description = "Only grips downed players within this distance",
+        Default = playerGripMaxDistance,
+        Min = 10,
+        Max = 150,
+        Rounding = 0
+    }):OnChanged(function(value)
+        playerGripMaxDistance = value
+    end)
+
+    -- Player Stats Display
+    local playerStatsDisplayEnabled = false
+    local playerStatsGui
+    local playerStatsConnection
+
+    local function getValueText(container, statName)
+        local stat = container and container:FindFirstChild(statName)
+        if not stat then return "?" end
+        return tostring(stat.Value)
+    end
+
+    local function destroyPlayerStatsDisplay()
+        if playerStatsConnection then
+            playerStatsConnection:Disconnect()
+            playerStatsConnection = nil
+        end
+        if playerStatsGui then
+            playerStatsGui:Destroy()
+            playerStatsGui = nil
+        end
+    end
+
+    local function createPlayerStatsDisplay()
+        destroyPlayerStatsDisplay()
+
+        local guiParent = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        if not guiParent then return end
+
+        playerStatsGui = Instance.new("ScreenGui")
+        playerStatsGui.Name = "ARBPlayerStatsDisplay"
+        playerStatsGui.ResetOnSpawn = false
+        playerStatsGui.Parent = guiParent
+
+        local label = Instance.new("TextLabel")
+        label.Name = "StatsLabel"
+        label.Size = UDim2.new(0, 230, 0, 110)
+        label.Position = UDim2.new(0, 12, 0.5, -55)
+        label.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        label.BackgroundTransparency = 0.25
+        label.BorderSizePixel = 0
+        label.Font = Enum.Font.GothamBold
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextStrokeTransparency = 0.5
+        label.TextSize = 16
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextYAlignment = Enum.TextYAlignment.Top
+        label.Parent = playerStatsGui
+
+        playerStatsConnection = RunService.Heartbeat:Connect(function()
+            if not playerStatsDisplayEnabled then return end
+            local stats = LocalPlayer:FindFirstChild("Player Stats")
+            label.Text = string.format(
+                "Wisdom: %s\nMaxChi: %s\nYuanz: %s\nBadKarma: %s",
+                getValueText(stats, "Wisdom"),
+                getValueText(stats, "MaxChi"),
+                getValueText(stats, "Yuanz"),
+                getValueText(stats, "Bad Karma")
+            )
+        end)
+    end
+
+    tabs.Players:AddToggle("PlayerStatsDisplayToggle", {
+        Title = "Show Player Stats",
+        Default = false,
+        Description = "Displays Wisdom, MaxChi, Yuanz, and Bad Karma"
+    }):OnChanged(function(enabled)
+        playerStatsDisplayEnabled = enabled
+        if enabled then
+            createPlayerStatsDisplay()
+        else
+            destroyPlayerStatsDisplay()
+        end
+    end)
+
+    local espColor = Color3.fromRGB(255, 0, 0)
 
     -- Hitbox Expander
     local hitboxExpanderEnabled = false
     local hitboxSizeStuds = 8
-    local hitboxColor = Color3.fromRGB(255, 0, 0)
     local hitboxTransparency = 0.5
-    local hitboxPassthroughEnabled = true
-    local hitboxNonCollideableEnabled = true
     local hitboxConnection
     local expandedHitboxes = {}
 
@@ -522,10 +628,11 @@ if game.PlaceId == 96063223159256 then
 
     local function updateHitboxProperties(hitboxPart)
         hitboxPart.Size = Vector3.new(hitboxSizeStuds, hitboxSizeStuds, hitboxSizeStuds)
-        hitboxPart.Color = hitboxColor
+        hitboxPart.Color = espColor
         hitboxPart.Transparency = hitboxTransparency
-        hitboxPart.CanCollide = not hitboxPassthroughEnabled
-        hitboxPart.CanTouch = not hitboxNonCollideableEnabled
+        hitboxPart.CanCollide = false
+        hitboxPart.CanTouch = false
+        hitboxPart.CanQuery = false
     end
 
     local function refreshAllExpandedHitboxes()
@@ -535,7 +642,7 @@ if game.PlaceId == 96063223159256 then
     end
 
     local function getOrCreateHitboxForCharacter(targetCharacter)
-        local targetHRP = targetCharacter:FindFirstChild("HumanoidRootPart")
+        local targetHRP = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
         if not targetHRP then return end
 
         local hitboxPart = expandedHitboxes[targetCharacter]
@@ -548,7 +655,6 @@ if game.PlaceId == 96063223159256 then
             hitboxPart.Shape = Enum.PartType.Block
             hitboxPart.Anchored = false
             hitboxPart.Massless = true
-            hitboxPart.CanQuery = false
 
             local weld = Instance.new("WeldConstraint")
             weld.Part0 = hitboxPart
@@ -630,7 +736,7 @@ if game.PlaceId == 96063223159256 then
         label.Font = Enum.Font.GothamBold
         label.TextStrokeTransparency = 0
         label.Text = text
-        label.TextColor3 = hitboxColor
+        label.TextColor3 = espColor
         label.Parent = billboard
 
         return billboard
@@ -658,13 +764,13 @@ if game.PlaceId == 96063223159256 then
         for _, billboard in pairs(playerESPBillboards) do
             local label = billboard:FindFirstChild("Label")
             if label then
-                label.TextColor3 = hitboxColor
+                label.TextColor3 = espColor
             end
         end
         for _, billboard in pairs(npcESPBillboards) do
             local label = billboard:FindFirstChild("Label")
             if label then
-                label.TextColor3 = hitboxColor
+                label.TextColor3 = espColor
             end
         end
     end
@@ -758,7 +864,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Players:AddToggle("HitboxExpanderToggle", {
         Title = "Hitbox Expander",
         Default = false,
-        Description = "Expands visible player hitboxes"
+        Description = "Expands visible player hitboxes and always lets players pass through"
     }):OnChanged(function(enabled)
         setHitboxExpanderState(enabled)
     end)
@@ -775,15 +881,6 @@ if game.PlaceId == 96063223159256 then
         refreshAllExpandedHitboxes()
     end)
 
-    tabs.Players:AddColorpicker("HitboxColorPicker", {
-        Title = "Hitbox / ESP Color",
-        Default = hitboxColor
-    }):OnChanged(function(value)
-        hitboxColor = value
-        refreshAllExpandedHitboxes()
-        refreshESPColors()
-    end)
-
     tabs.Players:AddSlider("HitboxTransparencySlider", {
         Title = "Hitbox Transparency",
         Description = "Changes expanded hitbox transparency",
@@ -796,22 +893,13 @@ if game.PlaceId == 96063223159256 then
         refreshAllExpandedHitboxes()
     end)
 
-    tabs.Players:AddToggle("HitboxPassthroughToggle", {
-        Title = "Hitbox Passthrough",
-        Default = hitboxPassthroughEnabled,
-        Description = "Lets players pass through the expanded hitbox"
+    tabs.Players:AddColorpicker("ESPColorPicker", {
+        Title = "ESP Color",
+        Default = espColor
     }):OnChanged(function(value)
-        hitboxPassthroughEnabled = value
+        espColor = value
         refreshAllExpandedHitboxes()
-    end)
-
-    tabs.Players:AddToggle("HitboxNonCollideableToggle", {
-        Title = "Hitbox Non-Collideable",
-        Default = hitboxNonCollideableEnabled,
-        Description = "Disables touch collisions on expanded hitbox"
-    }):OnChanged(function(value)
-        hitboxNonCollideableEnabled = value
-        refreshAllExpandedHitboxes()
+        refreshESPColors()
     end)
 
     tabs.Players:AddToggle("PlayerESPToggle", {
@@ -844,21 +932,29 @@ if game.PlaceId == 96063223159256 then
     end)
 
     -- Auto Meditate
+    local autoMeditateEnabled = false
+
     tabs.Meditation:AddToggle("AutoMeditateToggle", {
         Title = "Auto Meditate",
         Default = false,
         Description = "Automatically meditates for you"
     }):OnChanged(function(enabled)
-        task.spawn(function()
-            while enabled do
-                game.ReplicatedStorage.RemoteEvents.Meditate:FireServer("Start")
-                for _ = 1, 5 do
-                    game.ReplicatedStorage.RemoteEvents["Create Key"]:FireServer("Complete")
-                    task.wait(0.1)
+        if autoMeditateEnabled == enabled then return end
+        autoMeditateEnabled = enabled
+
+        if enabled then
+            task.spawn(function()
+                while autoMeditateEnabled do
+                    game.ReplicatedStorage.RemoteEvents.Meditate:FireServer("Start")
+                    for _ = 1, 5 do
+                        if not autoMeditateEnabled then break end
+                        game.ReplicatedStorage.RemoteEvents["Create Key"]:FireServer("Complete")
+                        task.wait(0.1)
+                    end
+                    task.wait(1.5)
                 end
-                task.wait(1.5)
-            end
-        end)
+            end)
+        end
     end)
 
     -- Auto Spin
@@ -867,19 +963,57 @@ if game.PlaceId == 96063223159256 then
     local selectedFamilies = {}
     local selectedTraits = {}
 
+    local function getStatValue(container, statName)
+        local stat = container and container:FindFirstChild(statName)
+        return stat and tostring(stat.Value) or ""
+    end
+
+    local function getFamilyValue()
+        return getStatValue(LocalPlayer, "Family")
+    end
+
+    local function getTraitValue()
+        local directTrait = getStatValue(LocalPlayer, "Trait")
+        if directTrait ~= "" then return directTrait end
+
+        return getStatValue(LocalPlayer:FindFirstChild("Player Stats"), "Trait")
+    end
+
+    local function findSelectedMatch(currentValue, selectedValues)
+        if currentValue == "" then return nil end
+
+        for _, selectedValue in ipairs(selectedValues) do
+            if currentValue == selectedValue or currentValue:find(selectedValue, 1, true) then
+                return selectedValue
+            end
+        end
+
+        return nil
+    end
+
+    local function stopSpinIfMatched(spinType, currentValue, selectedValues)
+        local matchedValue = findSelectedMatch(currentValue, selectedValues)
+        if not matchedValue then return false end
+
+        if spinType == "Family" then
+            autoSpinFamilyEnabled = false
+        else
+            autoSpinTraitEnabled = false
+        end
+
+        Fluent:Notify({Title = spinType .. " Match", Content = "You rolled " .. spinType:lower() .. ": " .. matchedValue, Duration = 5})
+        return true
+    end
+
     local function spinForFamily()
         local spinRemote = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("Spin")
         while autoSpinFamilyEnabled and not Fluent.Unloaded do
+            if stopSpinIfMatched("Family", getFamilyValue(), selectedFamilies) then return end
+
             spinRemote:FireServer("Family")
             task.wait(7.5)
-            local familyValue = LocalPlayer:FindFirstChild("Family") and LocalPlayer.Family.Value or ""
-            for _, fam in ipairs(selectedFamilies) do
-                if familyValue:find(fam) then
-                    autoSpinFamilyEnabled = false
-                    Fluent:Notify({Title = "Family Match", Content = "You rolled family: " .. fam, Duration = 5})
-                    return
-                end
-            end
+
+            if stopSpinIfMatched("Family", getFamilyValue(), selectedFamilies) then return end
             task.wait(0.5)
         end
     end
@@ -887,17 +1021,12 @@ if game.PlaceId == 96063223159256 then
     local function spinForTrait()
         local spinRemote = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("Spin")
         while autoSpinTraitEnabled and not Fluent.Unloaded do
+            if stopSpinIfMatched("Trait", getTraitValue(), selectedTraits) then return end
+
             spinRemote:FireServer("Trait")
             task.wait(7.5)
-            local traitStat = LocalPlayer:FindFirstChild("Player Stats") and LocalPlayer["Player Stats"]:FindFirstChild("Trait")
-            local traitValue = traitStat and traitStat.Value or ""
-            for _, trait in ipairs(selectedTraits) do
-                if traitValue:find(trait) then
-                    autoSpinTraitEnabled = false
-                    Fluent:Notify({Title = "Trait Match", Content = "You rolled trait: " .. trait, Duration = 5})
-                    return
-                end
-            end
+
+            if stopSpinIfMatched("Trait", getTraitValue(), selectedTraits) then return end
             task.wait(0.5)
         end
     end
