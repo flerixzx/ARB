@@ -7,6 +7,23 @@ if game.PlaceId == 96063223159256 then
     local player = Players.LocalPlayer
     local LocalPlayer = player
 
+    -- No Cooldown
+    local originalWait
+    local noCooldownHooked = false
+
+    local function enableNoCooldown()
+        if noCooldownHooked or type(hookfunction) ~= "function" then return false end
+
+        originalWait = hookfunction(wait, function(seconds)
+            return originalWait(0)
+        end)
+
+        noCooldownHooked = true
+        return true
+    end
+
+    enableNoCooldown()
+
     -- Load libraries
     local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
     local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
