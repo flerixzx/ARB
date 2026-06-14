@@ -197,15 +197,19 @@ if game.PlaceId == 96063223159256 then
         vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
     end
 
-    local function teleportBehindNPC(targetNPC)
+    local function teleportBehindCharacter(targetCharacter)
         local myHRP = getHumanoidRootPart()
-        local npcHRP = targetNPC and targetNPC:FindFirstChild("HumanoidRootPart")
-        if not (myHRP and npcHRP) then return false end
+        local targetHRP = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+        if not (myHRP and targetHRP) then return false end
 
-        local behindOffset = npcHRP.CFrame.LookVector * -autoFarmBehindDistance
-        local targetPos = npcHRP.Position + behindOffset
-        myHRP.CFrame = CFrame.new(targetPos, npcHRP.Position)
+        local behindOffset = targetHRP.CFrame.LookVector * -autoFarmBehindDistance
+        local targetPos = targetHRP.Position + behindOffset
+        myHRP.CFrame = CFrame.new(targetPos, targetHRP.Position)
         return true
+    end
+
+    local function teleportBehindNPC(targetNPC)
+        return teleportBehindCharacter(targetNPC)
     end
 
     local function gripAutoFarmNPC(targetNPC)
@@ -296,6 +300,161 @@ if game.PlaceId == 96063223159256 then
         Rounding = 1
     }):OnChanged(function(value)
         autoFarmBehindDistance = value
+    end)
+
+    -- Auto Kill Players
+    local autoKillPlayerEnabled = false
+    local selectedAutoKillPlayerName
+    local autoKillPlayerDropdown
+
+    local function getPlayerDropdownValues()
+        local values = {}
+
+        for _, targetPlayer in ipairs(Players:GetPlayers()) do
+            if targetPlayer ~= LocalPlayer then
+                table.insert(values, targetPlayer.Name)
+            end
+        end
+
+        table.sort(values)
+
+        if #values == 0 then
+            table.insert(values, "No players found")
+        end
+
+        return values
+    end
+
+    local function getSelectedAutoKillPlayer()
+        if not selectedAutoKillPlayerName or selectedAutoKillPlayerName == "No players found" then return end
+        return Players:FindFirstChild(selectedAutoKillPlayerName)
+    end
+
+    local function getCharacterHumanoid(character)
+        return character and character:FindFirstChildOfClass("Humanoid")
+    end
+
+    local function isCharacterAlive(character)
+        local humanoid = getCharacterHumanoid(character)
+        return humanoid and humanoid.Health > 10
+    end
+
+    local function isCharacterDowned(character)
+        local humanoid = getCharacterHumanoid(character)
+        return humanoid and humanoid.Health <= 10
+    end
+
+    local function fireGripOnCharacter(targetCharacter, hrp)
+        local gripEvent = getGripEvent()
+        if not (targetCharacter and targetCharacter.Parent and hrp and gripEvent) then return false end
+
+        gripEvent:FireServer("Kill", targetCharacter, hrp.Position + Vector3.new(1, 2, 0))
+        return true
+    end
+
+    local function gripAutoKillPlayer(targetCharacter)
+        local gripStartedAt = tick()
+
+        while autoKillPlayerEnabled and targetCharacter and targetCharacter.Parent and isCharacterDowned(targetCharacter) and (tick() - gripStartedAt) < 6 do
+            local hrp = getHumanoidRootPart()
+            if hrp then
+                fireGripOnCharacter(targetCharacter, hrp)
+            end
+            task.wait(npcGripInterval)
+        end
+    end
+
+    local function refreshAutoKillPlayerDropdown()
+        local values = getPlayerDropdownValues()
+
+        if autoKillPlayerDropdown and autoKillPlayerDropdown.SetValues then
+            autoKillPlayerDropdown:SetValues(values)
+        end
+
+        if selectedAutoKillPlayerName and not Players:FindFirstChild(selectedAutoKillPlayerName) then
+            selectedAutoKillPlayerName = nil
+        end
+    end
+
+    autoKillPlayerDropdown = tabs.Players:AddDropdown("AutoKillPlayerDropdown", {
+        Title = "Auto Kill Player",
+        Description = "Choose the player Auto Kill should target",
+        Values = getPlayerDropdownValues(),
+        Multi = false,
+        Default = 1
+    })
+
+    autoKillPlayerDropdown:OnChanged(function(value)
+        if value ~= "No players found" then
+            selectedAutoKillPlayerName = value
+        else
+            selectedAutoKillPlayerName = nil
+        end
+    end)
+
+    tabs.Players:AddButton({
+        Title = "Refresh Player List",
+        Description = "Updates the Auto Kill player dropdown",
+        Callback = function()
+            refreshAutoKillPlayerDropdown()
+            Fluent:Notify({Title = "Auto Kill", Content = "Player list refreshed.", Duration = 3})
+        end
+    })
+
+    tabs.Players:AddToggle("AutoKillPlayerToggle", {
+        Title = "Auto Kill Selected Player",
+        Default = false,
+        Description = "Teleports behind and attacks the selected player until downed, then grips"
+    }):OnChanged(function(enabled)
+        autoKillPlayerEnabled = enabled
+
+        if enabled then
+            task.spawn(function()
+                while autoKillPlayerEnabled do
+                    local targetPlayer = getSelectedAutoKillPlayer()
+                    local targetCharacter = targetPlayer and targetPlayer.Character
+
+                    if not (targetPlayer and targetCharacter) then
+                        task.wait(0.3)
+                    else
+                        local nextTeleportAt = tick()
+                        local nextM1At = tick()
+
+                        while autoKillPlayerEnabled and targetPlayer.Parent and targetCharacter.Parent and isCharacterAlive(targetCharacter) do
+                            local now = tick()
+
+                            if now >= nextTeleportAt then
+                                teleportBehindCharacter(targetCharacter)
+                                nextTeleportAt = nextTeleportAt + autoFarmTeleportInterval
+                            end
+
+                            if now >= nextM1At then
+                                if isCharacterAlive(targetCharacter) and teleportBehindCharacter(targetCharacter) then
+                                    performM1()
+                                end
+                                nextM1At = nextM1At + autoFarmM1Interval
+                            end
+
+                            task.wait(0.03)
+                        end
+
+                        if autoKillPlayerEnabled and targetCharacter.Parent and isCharacterDowned(targetCharacter) then
+                            gripAutoKillPlayer(targetCharacter)
+                        end
+
+                        task.wait(0.1)
+                    end
+                end
+            end)
+        end
+    end)
+
+    Players.PlayerAdded:Connect(refreshAutoKillPlayerDropdown)
+    Players.PlayerRemoving:Connect(function(leavingPlayer)
+        if leavingPlayer.Name == selectedAutoKillPlayerName then
+            selectedAutoKillPlayerName = nil
+        end
+        refreshAutoKillPlayerDropdown()
     end)
 
     -- Auto Grip Players
