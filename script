@@ -75,12 +75,15 @@ if game.PlaceId == 96063223159256 then
     -- FUN
     -- =======================
 
-    local auraEnabled = false
+local auraEnabled = false
     local auraRadius = 40
     local auraInterval = 0.2
     local auraWhitelist = {
 
     }
+
+    -- List of valid weapon names to look for
+    local validWeapons = {"Glider", "Hookswords", "Hammers", "War Fans", "Club"}
 
     local function notify(title, text, duration)
         pcall(function()
@@ -111,9 +114,35 @@ if game.PlaceId == 96063223159256 then
         return targets
     end
 
+    -- DYNAMIC WEAPON DETECTOR
     local function getAuraEvent()
         local character = LocalPlayer.Character
-        local weapon = character and character:FindFirstChild("Club")
+        local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+        local weapon = nil
+
+        -- 1. Check if the weapon is currently equipped in the Character
+        if character then
+            for _, name in ipairs(validWeapons) do
+                local found = character:FindFirstChild(name)
+                if found then
+                    weapon = found
+                    break
+                end
+            end
+        end
+
+        -- 2. If not equipped, check the Backpack/Inventory
+        if not weapon and backpack then
+            for _, name in ipairs(validWeapons) do
+                local found = backpack:FindFirstChild(name)
+                if found then
+                    weapon = found
+                    break
+                end
+            end
+        end
+
+        -- 3. If a weapon was found, safely navigate to the RemoteEvent
         return weapon and weapon:FindFirstChild("Scripts")
             and weapon.Scripts:FindFirstChild("Main")
             and weapon.Scripts.Main:FindFirstChild("Event")
@@ -154,7 +183,7 @@ if game.PlaceId == 96063223159256 then
     end
 
     tabs.Fun:AddToggle("AuraToggle", {
-        Title = "Black Guy Annoyer",
+        Title = "Aura Annoyer",
         Default = false,
         Description = "Ragdolls nearby non-whitelisted players"
     }):OnChanged(function(enabled)
@@ -163,7 +192,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Fun:AddSlider("AuraRadiusSlider", {
         Title = "Radius",
-        Description = "How far to annoy black people",
+        Description = "How far to annoy people",
         Default = auraRadius,
         Min = 1,
         Max = 200000,
@@ -179,7 +208,7 @@ if game.PlaceId == 96063223159256 then
     local ElementCodes = {"flameohotman","thatsroughbuddy","rewrittingmaybesoon","wherestheavatarSpins","ElementRerollYay","25SpinsYay"}
 
     function getHumanoidRootPart()
-        local character = player.Character
+        local character = LocalPlayer.Character -- Fixed "player" to "LocalPlayer" assuming it matches your environment setup
         return character and character:FindFirstChild("HumanoidRootPart")
     end
 
