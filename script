@@ -166,7 +166,7 @@ if game.PlaceId == 96063223159256 then
         Description = "How far Aura can ragdoll players, in studs",
         Default = auraRadius,
         Min = 1,
-        Max = 2000,
+        Max = 200000,
         Rounding = 0
     }):OnChanged(function(value)
         auraRadius = value
