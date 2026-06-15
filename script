@@ -115,7 +115,7 @@ if game.PlaceId == 96063223159256 then
 
     local function getAuraEvent()
         local character = LocalPlayer.Character
-        local weapon = character and character:FindFirstChild("Clubs")
+        local weapon = character and character:FindFirstChild("Club")
         return weapon and weapon:FindFirstChild("Scripts")
             and weapon.Scripts:FindFirstChild("Main")
             and weapon.Scripts.Main:FindFirstChild("Event")
