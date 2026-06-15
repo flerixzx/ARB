@@ -81,33 +81,7 @@ if game.PlaceId == 96063223159256 then
     local auraPermanentlyDisabled = false
     local auraInterval = 0.2
     local auraWhitelist = {
-        ["cxberhy"] = true,
-        ["Baddestranger59"] = true,
-        ["arbextender"] = true,
-        ["RokuGenu"] = true,
-        ["rumocen"] = true,
-        ["topaisrare"] = true,
-        ["jamamlry"] = true,
-        ["lsldasofdo"] = true,
-        ["RoosterMoose1234"] = true,
-        ["turkeytheblackbender"] = true,
-        ["ZackxAzureOfficial"] = true,
-        ["qwertycandlee"] = true,
-        ["NoobyCombatWarrior"] = true,
-        ["newrealmz"] = true,
-        ["Yeam3213"] = true,
-        ["DEADPOOL_ONG"] = true,
-        ["IamMp3ovo"] = true,
-        ["kaithegoat080"] = true,
-        ["Xomety_Xcalibur"] = true,
-        ["1Fabio_Sparkleman1"] = true,
-        ["MasterOfShadows_23"] = true,
-        ["Friet_s6"] = true,
-        ["friet_s12"] = true,
-        ["balkan1324"] = true,
-        ["pinkthing811"] = true,
-        ["officermeme0"] = true,
-        ["user123"] = true
+
     }
 
     local function notify(title, text, duration)
@@ -141,7 +115,7 @@ if game.PlaceId == 96063223159256 then
 
     local function getAuraEvent()
         local character = LocalPlayer.Character
-        local weapon = character and character:FindFirstChild("WEPONNAME")
+        local weapon = character and character:FindFirstChild("Clubs")
         return weapon and weapon:FindFirstChild("Scripts")
             and weapon.Scripts:FindFirstChild("Main")
             and weapon.Scripts.Main:FindFirstChild("Event")
