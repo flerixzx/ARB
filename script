@@ -4,7 +4,6 @@ if game.PlaceId == 96063223159256 then
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local RunService = game:GetService("RunService")
-    local UserInputService = game:GetService("UserInputService")
     local StarterGui = game:GetService("StarterGui")
     local player = Players.LocalPlayer
     local LocalPlayer = player
@@ -77,8 +76,7 @@ if game.PlaceId == 96063223159256 then
     -- =======================
 
     local auraEnabled = false
-    local dominationEnabled = false
-    local auraPermanentlyDisabled = false
+    local auraRadius = 40
     local auraInterval = 0.2
     local auraWhitelist = {
 
@@ -135,101 +133,43 @@ if game.PlaceId == 96063223159256 then
         end
     end
 
-    local function runAuraLoop(stateGetter, radius)
+    local function runAuraLoop()
         task.spawn(function()
-            while stateGetter() and not auraPermanentlyDisabled do
-                applyAuraEffect(getAuraTargets(radius))
+            while auraEnabled do
+                applyAuraEffect(getAuraTargets(auraRadius))
                 task.wait(auraInterval)
             end
         end)
     end
 
     local function setAuraState(enabled)
-        if auraPermanentlyDisabled then return end
+        if auraEnabled == enabled then return end
         auraEnabled = enabled
         if enabled then
-            notify("Aura On", "Aura mode activated (40 studs).", 2)
-            runAuraLoop(function() return auraEnabled end, 40)
+            notify("Aura On", "Aura mode activated (" .. auraRadius .. " studs).", 2)
+            runAuraLoop()
         else
             notify("Aura Off", "Aura mode deactivated.", 2)
         end
     end
 
-    local function setDominationState(enabled)
-        if auraPermanentlyDisabled then return end
-        dominationEnabled = enabled
-        if enabled then
-            notify("Domination On", "300-stud aura activated!", 3)
-            runAuraLoop(function() return dominationEnabled end, 300)
-        else
-            notify("Domination Off", "Domination deactivated.", 2)
-        end
-    end
-
-    local auraToggle = tabs.Fun:AddToggle("AuraToggle", {
-        Title = "Aura (40 Studs)",
+    tabs.Fun:AddToggle("AuraToggle", {
+        Title = "Aura",
         Default = false,
         Description = "Ragdolls nearby non-whitelisted players"
-    })
-
-    auraToggle:OnChanged(function(enabled)
+    }):OnChanged(function(enabled)
         setAuraState(enabled)
     end)
 
-    local dominationToggle = tabs.Fun:AddToggle("DominationToggle", {
-        Title = "Domination (300 Studs)",
-        Default = false,
-        Description = "Ragdolls non-whitelisted players in a larger radius"
-    })
-
-    dominationToggle:OnChanged(function(enabled)
-        setDominationState(enabled)
-    end)
-
-    tabs.Fun:AddButton({
-        Title = "Break Aura Script",
-        Description = "Permanently disables Aura and Domination for this run",
-        Callback = function()
-            if auraPermanentlyDisabled then return end
-            auraEnabled = false
-            dominationEnabled = false
-            auraPermanentlyDisabled = true
-            if auraToggle.SetValue then auraToggle:SetValue(false) end
-            if dominationToggle.SetValue then dominationToggle:SetValue(false) end
-            notify("Script Broken", "Aura permanently disabled.", 3)
-        end
-    })
-
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if input.KeyCode == Enum.KeyCode.X then
-            if auraPermanentlyDisabled then
-                notify("Script Broken", "Aura is permanently disabled.", 2)
-                return
-            end
-            if auraToggle.SetValue then
-                auraToggle:SetValue(not auraEnabled)
-            else
-                setAuraState(not auraEnabled)
-            end
-        elseif input.KeyCode == Enum.KeyCode.K then
-            if auraPermanentlyDisabled then
-                notify("Script Broken", "Domination is permanently disabled.", 2)
-                return
-            end
-            if dominationToggle.SetValue then
-                dominationToggle:SetValue(not dominationEnabled)
-            else
-                setDominationState(not dominationEnabled)
-            end
-        elseif input.KeyCode == Enum.KeyCode.F then
-            auraEnabled = false
-            dominationEnabled = false
-            auraPermanentlyDisabled = true
-            if auraToggle.SetValue then auraToggle:SetValue(false) end
-            if dominationToggle.SetValue then dominationToggle:SetValue(false) end
-            notify("Script Broken", "Aura permanently disabled.", 3)
-        end
+    tabs.Fun:AddSlider("AuraRadiusSlider", {
+        Title = "Aura Radius",
+        Description = "How far Aura can ragdoll players, in studs",
+        Default = auraRadius,
+        Min = 1,
+        Max = 2000,
+        Rounding = 0
+    }):OnChanged(function(value)
+        auraRadius = value
     end)
 
     local Families = {"Yakoda","Lozai","Leifong","Tarrlok","Sozin","Hama","Gyatso","Vaan"}
