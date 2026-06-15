@@ -75,10 +75,12 @@ if game.PlaceId == 96063223159256 then
     -- FUN
     -- =======================
 
-    local auraEnabled = false
-    local auraRadius = 40
-    local auraInterval = 0.2
-    local auraWhitelist = {
+    local destroyerEnabled = false
+    local destroyerRadius = 40
+    local destroyerInterval = 0.2
+    local destroyerWeapons = {"Hookswords", "Glider", "Club", "Hammers", "War Fans"}
+    local selectedDestroyerWeapon = "Club"
+    local destroyerWhitelist = {
 
     }
 
@@ -92,13 +94,13 @@ if game.PlaceId == 96063223159256 then
         end)
     end
 
-    local function getAuraTargets(radius)
+    local function getDestroyerTargets(radius)
         local hrp = getHumanoidRootPart()
         if not hrp then return {} end
 
         local targets = {}
         for _, targetPlayer in ipairs(Players:GetPlayers()) do
-            if targetPlayer ~= LocalPlayer and not auraWhitelist[targetPlayer.Name] then
+            if targetPlayer ~= LocalPlayer and not destroyerWhitelist[targetPlayer.Name] then
                 local targetCharacter = targetPlayer.Character
                 local targetHRP = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
                 local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
@@ -111,21 +113,21 @@ if game.PlaceId == 96063223159256 then
         return targets
     end
 
-    local function getAuraEvent()
+    local function getDestroyerEvent()
         local character = LocalPlayer.Character
-        local weapon = character and character:FindFirstChild("Club")
+        local weapon = character and character:FindFirstChild(selectedDestroyerWeapon)
         return weapon and weapon:FindFirstChild("Scripts")
             and weapon.Scripts:FindFirstChild("Main")
             and weapon.Scripts.Main:FindFirstChild("Event")
     end
 
-    local function applyAuraEffect(targets)
-        local auraEvent = getAuraEvent()
-        if not auraEvent then return end
+    local function applyDestroyerEffect(targets)
+        local destroyerEvent = getDestroyerEvent()
+        if not destroyerEvent then return end
 
         for _, targetCharacter in ipairs(targets) do
             local success, err = pcall(function()
-                auraEvent:FireServer("Ragdoll", targetCharacter)
+                destroyerEvent:FireServer("Ragdoll", targetCharacter)
             end)
             if not success then
                 warn("Failed to ragdoll:", targetCharacter.Name, err)
@@ -133,43 +135,57 @@ if game.PlaceId == 96063223159256 then
         end
     end
 
-    local function runAuraLoop()
+    local function runDestroyerLoop()
         task.spawn(function()
-            while auraEnabled do
-                applyAuraEffect(getAuraTargets(auraRadius))
-                task.wait(auraInterval)
+            while destroyerEnabled do
+                applyDestroyerEffect(getDestroyerTargets(destroyerRadius))
+                task.wait(destroyerInterval)
             end
         end)
     end
 
-    local function setAuraState(enabled)
-        if auraEnabled == enabled then return end
-        auraEnabled = enabled
+    local function setDestroyerState(enabled)
+        if destroyerEnabled == enabled then return end
+        destroyerEnabled = enabled
         if enabled then
-            notify("Aura On", "Aura mode activated (" .. auraRadius .. " studs).", 2)
-            runAuraLoop()
+            notify("Destroyer On", "Destroyer mode activated with " .. selectedDestroyerWeapon .. " (" .. destroyerRadius .. " studs).", 2)
+            runDestroyerLoop()
         else
-            notify("Aura Off", "Aura mode deactivated.", 2)
+            notify("Destroyer Off", "Destroyer mode deactivated.", 2)
         end
     end
 
-    tabs.Fun:AddToggle("AuraToggle", {
-        Title = "Aura",
+    tabs.Fun:AddToggle("DestroyerToggle", {
+        Title = "Destroyer",
         Default = false,
         Description = "Ragdolls nearby non-whitelisted players"
     }):OnChanged(function(enabled)
-        setAuraState(enabled)
+        setDestroyerState(enabled)
     end)
 
-    tabs.Fun:AddSlider("AuraRadiusSlider", {
-        Title = "Aura Radius",
-        Description = "How far Aura can ragdoll players, in studs",
-        Default = auraRadius,
+    local destroyerWeaponDropdown = tabs.Fun:AddDropdown("DestroyerWeaponDropdown", {
+        Title = "Destroyer Weapon",
+        Description = "Choose which equipped weapon Destroyer uses",
+        Values = destroyerWeapons,
+        Multi = false,
+        Default = 3
+    })
+
+    destroyerWeaponDropdown:OnChanged(function(value)
+        if value then
+            selectedDestroyerWeapon = value
+        end
+    end)
+
+    tabs.Fun:AddSlider("DestroyerRadiusSlider", {
+        Title = "Destroyer Radius",
+        Description = "How far Destroyer can ragdoll players, in studs",
+        Default = destroyerRadius,
         Min = 1,
         Max = 200000,
         Rounding = 0
     }):OnChanged(function(value)
-        auraRadius = value
+        destroyerRadius = value
     end)
 
     local Families = {"Yakoda","Lozai","Leifong","Tarrlok","Sozin","Hama","Gyatso","Vaan"}
