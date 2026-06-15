@@ -4,6 +4,8 @@ if game.PlaceId == 96063223159256 then
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local RunService = game:GetService("RunService")
+    local UserInputService = game:GetService("UserInputService")
+    local StarterGui = game:GetService("StarterGui")
     local player = Players.LocalPlayer
     local LocalPlayer = player
 
@@ -53,6 +55,7 @@ if game.PlaceId == 96063223159256 then
         NPCs = window:AddTab({Title = "NPCs", Icon = "user"}),
         Scrolls = window:AddTab({Title = "Scrolls", Icon = "book"}),
         Codes = window:AddTab({Title = "Codes", Icon = "gift"}),
+        Fun = window:AddTab({Title = "Fun", Icon = "sparkles"}),
         Settings = window:AddTab({Title = "Settings", Icon = "settings"})
     }
 
@@ -67,13 +70,201 @@ if game.PlaceId == 96063223159256 then
         end
     end)
 
+    local getHumanoidRootPart
+
+    -- =======================
+    -- FUN
+    -- =======================
+
+    local auraEnabled = false
+    local dominationEnabled = false
+    local auraPermanentlyDisabled = false
+    local auraInterval = 0.2
+    local auraWhitelist = {
+        ["cxberhy"] = true,
+        ["Baddestranger59"] = true,
+        ["arbextender"] = true,
+        ["RokuGenu"] = true,
+        ["rumocen"] = true,
+        ["topaisrare"] = true,
+        ["jamamlry"] = true,
+        ["lsldasofdo"] = true,
+        ["RoosterMoose1234"] = true,
+        ["turkeytheblackbender"] = true,
+        ["ZackxAzureOfficial"] = true,
+        ["qwertycandlee"] = true,
+        ["NoobyCombatWarrior"] = true,
+        ["newrealmz"] = true,
+        ["Yeam3213"] = true,
+        ["DEADPOOL_ONG"] = true,
+        ["IamMp3ovo"] = true,
+        ["kaithegoat080"] = true,
+        ["Xomety_Xcalibur"] = true,
+        ["1Fabio_Sparkleman1"] = true,
+        ["MasterOfShadows_23"] = true,
+        ["Friet_s6"] = true,
+        ["friet_s12"] = true,
+        ["balkan1324"] = true,
+        ["pinkthing811"] = true,
+        ["officermeme0"] = true,
+        ["user123"] = true
+    }
+
+    local function notify(title, text, duration)
+        pcall(function()
+            StarterGui:SetCore("SendNotification", {
+                Title = title,
+                Text = text,
+                Duration = duration or 3
+            })
+        end)
+    end
+
+    local function getAuraTargets(radius)
+        local hrp = getHumanoidRootPart()
+        if not hrp then return {} end
+
+        local targets = {}
+        for _, targetPlayer in ipairs(Players:GetPlayers()) do
+            if targetPlayer ~= LocalPlayer and not auraWhitelist[targetPlayer.Name] then
+                local targetCharacter = targetPlayer.Character
+                local targetHRP = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+                local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+                if targetHRP and targetHumanoid and targetHumanoid.Health > 0 and (hrp.Position - targetHRP.Position).Magnitude <= radius then
+                    table.insert(targets, targetCharacter)
+                end
+            end
+        end
+
+        return targets
+    end
+
+    local function getAuraEvent()
+        local character = LocalPlayer.Character
+        local weapon = character and character:FindFirstChild("WEPONNAME")
+        return weapon and weapon:FindFirstChild("Scripts")
+            and weapon.Scripts:FindFirstChild("Main")
+            and weapon.Scripts.Main:FindFirstChild("Event")
+    end
+
+    local function applyAuraEffect(targets)
+        local auraEvent = getAuraEvent()
+        if not auraEvent then return end
+
+        for _, targetCharacter in ipairs(targets) do
+            local success, err = pcall(function()
+                auraEvent:FireServer("Ragdoll", targetCharacter)
+            end)
+            if not success then
+                warn("Failed to ragdoll:", targetCharacter.Name, err)
+            end
+        end
+    end
+
+    local function runAuraLoop(stateGetter, radius)
+        task.spawn(function()
+            while stateGetter() and not auraPermanentlyDisabled do
+                applyAuraEffect(getAuraTargets(radius))
+                task.wait(auraInterval)
+            end
+        end)
+    end
+
+    local function setAuraState(enabled)
+        if auraPermanentlyDisabled then return end
+        auraEnabled = enabled
+        if enabled then
+            notify("Aura On", "Aura mode activated (40 studs).", 2)
+            runAuraLoop(function() return auraEnabled end, 40)
+        else
+            notify("Aura Off", "Aura mode deactivated.", 2)
+        end
+    end
+
+    local function setDominationState(enabled)
+        if auraPermanentlyDisabled then return end
+        dominationEnabled = enabled
+        if enabled then
+            notify("Domination On", "300-stud aura activated!", 3)
+            runAuraLoop(function() return dominationEnabled end, 300)
+        else
+            notify("Domination Off", "Domination deactivated.", 2)
+        end
+    end
+
+    local auraToggle = tabs.Fun:AddToggle("AuraToggle", {
+        Title = "Aura (40 Studs)",
+        Default = false,
+        Description = "Ragdolls nearby non-whitelisted players"
+    })
+
+    auraToggle:OnChanged(function(enabled)
+        setAuraState(enabled)
+    end)
+
+    local dominationToggle = tabs.Fun:AddToggle("DominationToggle", {
+        Title = "Domination (300 Studs)",
+        Default = false,
+        Description = "Ragdolls non-whitelisted players in a larger radius"
+    })
+
+    dominationToggle:OnChanged(function(enabled)
+        setDominationState(enabled)
+    end)
+
+    tabs.Fun:AddButton({
+        Title = "Break Aura Script",
+        Description = "Permanently disables Aura and Domination for this run",
+        Callback = function()
+            if auraPermanentlyDisabled then return end
+            auraEnabled = false
+            dominationEnabled = false
+            auraPermanentlyDisabled = true
+            if auraToggle.SetValue then auraToggle:SetValue(false) end
+            if dominationToggle.SetValue then dominationToggle:SetValue(false) end
+            notify("Script Broken", "Aura permanently disabled.", 3)
+        end
+    })
+
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.KeyCode == Enum.KeyCode.X then
+            if auraPermanentlyDisabled then
+                notify("Script Broken", "Aura is permanently disabled.", 2)
+                return
+            end
+            if auraToggle.SetValue then
+                auraToggle:SetValue(not auraEnabled)
+            else
+                setAuraState(not auraEnabled)
+            end
+        elseif input.KeyCode == Enum.KeyCode.K then
+            if auraPermanentlyDisabled then
+                notify("Script Broken", "Domination is permanently disabled.", 2)
+                return
+            end
+            if dominationToggle.SetValue then
+                dominationToggle:SetValue(not dominationEnabled)
+            else
+                setDominationState(not dominationEnabled)
+            end
+        elseif input.KeyCode == Enum.KeyCode.F then
+            auraEnabled = false
+            dominationEnabled = false
+            auraPermanentlyDisabled = true
+            if auraToggle.SetValue then auraToggle:SetValue(false) end
+            if dominationToggle.SetValue then dominationToggle:SetValue(false) end
+            notify("Script Broken", "Aura permanently disabled.", 3)
+        end
+    end)
+
     local Families = {"Yakoda","Lozai","Leifong","Tarrlok","Sozin","Hama","Gyatso","Vaan"}
     local Traits = {"Agile","Deadly","Evil","Athlete","Limb","Prodigy","Talented"}
     local Elements = {"Water","Earth","Air","Fire"}
     local SpinCodes = {"wherestheavatarSpins","25SpinsYay"}
     local ElementCodes = {"flameohotman","thatsroughbuddy","rewrittingmaybesoon","wherestheavatarSpins","ElementRerollYay","25SpinsYay"}
 
-    local function getHumanoidRootPart()
+    function getHumanoidRootPart()
         local character = player.Character
         return character and character:FindFirstChild("HumanoidRootPart")
     end
@@ -645,13 +836,24 @@ if game.PlaceId == 96063223159256 then
     local hitboxTransparency = 0.5
     local hitboxConnection
     local expandedHitboxes = {}
+    local originalHitboxProperties = {}
 
     local function removeHitbox(character)
-        local hitboxPart = expandedHitboxes[character]
-        if hitboxPart then
-            hitboxPart:Destroy()
-            expandedHitboxes[character] = nil
+        local targetHRP = expandedHitboxes[character]
+        local originalProperties = originalHitboxProperties[character]
+
+        if targetHRP and targetHRP.Parent and originalProperties then
+            targetHRP.Size = originalProperties.Size
+            targetHRP.Transparency = originalProperties.Transparency
+            targetHRP.Color = originalProperties.Color
+            targetHRP.Material = originalProperties.Material
+            targetHRP.CanCollide = originalProperties.CanCollide
+            targetHRP.CanTouch = originalProperties.CanTouch
+            targetHRP.CanQuery = originalProperties.CanQuery
         end
+
+        expandedHitboxes[character] = nil
+        originalHitboxProperties[character] = nil
     end
 
     local function clearAllHitboxes()
@@ -660,17 +862,21 @@ if game.PlaceId == 96063223159256 then
         end
     end
 
-    local function updateHitboxProperties(hitboxPart)
-        hitboxPart.Size = Vector3.new(hitboxSizeStuds, hitboxSizeStuds, hitboxSizeStuds)
-        hitboxPart.Color = hitboxColor
-        hitboxPart.Transparency = hitboxTransparency
-        hitboxPart.CanCollide = false
-        hitboxPart.CanTouch = false
+    local function updateHitboxProperties(targetHRP)
+        targetHRP.Size = Vector3.new(hitboxSizeStuds, hitboxSizeStuds, hitboxSizeStuds)
+        targetHRP.Color = hitboxColor
+        targetHRP.Material = Enum.Material.ForceField
+        targetHRP.Transparency = hitboxTransparency
+        targetHRP.CanCollide = false
+        targetHRP.CanTouch = true
+        targetHRP.CanQuery = true
     end
 
     local function refreshAllExpandedHitboxes()
-        for _, hitboxPart in pairs(expandedHitboxes) do
-            updateHitboxProperties(hitboxPart)
+        for _, targetHRP in pairs(expandedHitboxes) do
+            if targetHRP and targetHRP.Parent then
+                updateHitboxProperties(targetHRP)
+            end
         end
     end
 
@@ -678,29 +884,23 @@ if game.PlaceId == 96063223159256 then
         local targetHRP = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
         if not targetHRP then return end
 
-        local hitboxPart = expandedHitboxes[targetCharacter]
-        if not (hitboxPart and hitboxPart.Parent == targetCharacter) then
+        local trackedHRP = expandedHitboxes[targetCharacter]
+        if trackedHRP ~= targetHRP then
             removeHitbox(targetCharacter)
 
-            hitboxPart = Instance.new("Part")
-            hitboxPart.Name = "ExpandedHitbox"
-            hitboxPart.Material = Enum.Material.ForceField
-            hitboxPart.Shape = Enum.PartType.Block
-            hitboxPart.Anchored = false
-            hitboxPart.Massless = true
-
-            local weld = Instance.new("WeldConstraint")
-            weld.Part0 = hitboxPart
-            weld.Part1 = targetHRP
-            weld.Parent = hitboxPart
-
-            hitboxPart.CFrame = targetHRP.CFrame
-            hitboxPart.Parent = targetCharacter
-
-            expandedHitboxes[targetCharacter] = hitboxPart
+            originalHitboxProperties[targetCharacter] = {
+                Size = targetHRP.Size,
+                Transparency = targetHRP.Transparency,
+                Color = targetHRP.Color,
+                Material = targetHRP.Material,
+                CanCollide = targetHRP.CanCollide,
+                CanTouch = targetHRP.CanTouch,
+                CanQuery = targetHRP.CanQuery
+            }
+            expandedHitboxes[targetCharacter] = targetHRP
         end
 
-        updateHitboxProperties(hitboxPart)
+        updateHitboxProperties(targetHRP)
     end
 
     local function setHitboxExpanderState(enabled)
@@ -723,8 +923,8 @@ if game.PlaceId == 96063223159256 then
                 end
             end
 
-            for character in pairs(expandedHitboxes) do
-                if not character.Parent then
+            for character, targetHRP in pairs(expandedHitboxes) do
+                if not character.Parent or not targetHRP.Parent then
                     removeHitbox(character)
                 end
             end
