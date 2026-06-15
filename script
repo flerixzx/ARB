@@ -183,16 +183,16 @@ local auraEnabled = false
     end
 
     tabs.Fun:AddToggle("AuraToggle", {
-        Title = "Aura Annoyer",
+        Title = "Black Guy Annoyer",
         Default = false,
-        Description = "Ragdolls nearby non-whitelisted players"
+        Description = "annoy NIGGERS that you don't like"
     }):OnChanged(function(enabled)
         setAuraState(enabled)
     end)
 
     tabs.Fun:AddSlider("AuraRadiusSlider", {
         Title = "Radius",
-        Description = "How far to annoy people",
+        Description = "how far to annoy niggers",
         Default = auraRadius,
         Min = 1,
         Max = 200000,
