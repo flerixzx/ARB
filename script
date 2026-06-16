@@ -49,7 +49,7 @@ if game.PlaceId == 96063223159256 then
     local tabs = {
         Spinning = window:AddTab({Title = "Spinning", Icon = "rotate-ccw"}),
         Players = window:AddTab({Title = "Players", Icon = "users"}),
-        Fun = window:AddTab({Title = "Fun", Icon = "sparkles"}),
+        Fun = window:AddTab({Title = "Fun", Icon = "gamepad-2"}),
         Meditation = window:AddTab({Title = "Meditation", Icon = "circle"}),
         AutoFarm = window:AddTab({Title = "Auto Farm", Icon = "swords"}),
         NPCs = window:AddTab({Title = "NPCs", Icon = "user"}),
