@@ -262,17 +262,17 @@ if game.PlaceId == 96063223159256 then
         end
     end
 
-    tabs.Fun:AddToggle("AuraToggle", {
-        Title = "Aura",
+    tabs.Fun:AddToggle("Black guy annoyer", {
+        Title = "Black guy annoyer",
         Default = false,
-        Description = "Affects nearby non-whitelisted players."
+        Description = "annoy NIGGERS that you dont like"
     }):OnChanged(function(enabled)
         setAuraState(enabled)
     end)
 
     targetAuraPlayerDropdown = tabs.Fun:AddDropdown("TargetAuraPlayerDropdown", {
-        Title = "Target Aura Player",
-        Description = "Choose one player for Target Aura to affect.",
+        Title = "Target black people",
+        Description = "Choose one nigger to Target.",
         Values = getAuraPlayerDropdownValues(),
         Multi = false,
         Default = 1
@@ -287,16 +287,16 @@ if game.PlaceId == 96063223159256 then
     end)
 
     tabs.Fun:AddButton({
-        Title = "Refresh Target Aura Players",
-        Description = "Updates the Target Aura player dropdown.",
+        Title = "Refresh players",
+        Description = "Updates the players.",
         Callback = function()
             refreshTargetAuraPlayerDropdown()
             notify("Target Aura", "Player list refreshed.", 3)
         end
     })
 
-    tabs.Fun:AddToggle("TargetAuraToggle", {
-        Title = "Target Aura",
+    tabs.Fun:AddToggle("blackpeopleannoyer", {
+        Title = "Target black people",
         Default = false,
         Description = "Only affects the selected player unless they are whitelisted."
     }):OnChanged(function(enabled)
@@ -311,7 +311,7 @@ if game.PlaceId == 96063223159256 then
     end)
 
     tabs.Fun:AddInput("AuraWhitelistInput", {
-        Title = "Aura Whitelist",
+        Title = "White People Whitelist",
         Default = "",
         Placeholder = "username1, username2",
         Numeric = false,
@@ -322,16 +322,16 @@ if game.PlaceId == 96063223159256 then
     })
 
     tabs.Fun:AddButton({
-        Title = "Add Aura Whitelist Usernames",
-        Description = "Adds typed usernames so Aura and Target Aura will not affect them.",
+        Title = "Add white people to the Whitelist",
+        Description = "add them",
         Callback = function()
             addAuraWhitelistNames(auraWhitelistInput)
         end
     })
 
-    tabs.Fun:AddSlider("AuraRadiusSlider", {
+    tabs.Fun:AddSlider("Radius", {
         Title = "Radius",
-        Description = "How far Aura reaches.",
+        Description = "How far to annoy blackies.",
         Default = auraRadius,
         Min = 1,
         Max = 200000,
