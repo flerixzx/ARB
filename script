@@ -49,12 +49,12 @@ if game.PlaceId == 96063223159256 then
     local tabs = {
         Spinning = window:AddTab({Title = "Spinning", Icon = "rotate-ccw"}),
         Players = window:AddTab({Title = "Players", Icon = "users"}),
+        Fun = window:AddTab({Title = "Fun", Icon = "sparkles"}),
         Meditation = window:AddTab({Title = "Meditation", Icon = "circle"}),
         AutoFarm = window:AddTab({Title = "Auto Farm", Icon = "swords"}),
         NPCs = window:AddTab({Title = "NPCs", Icon = "user"}),
         Scrolls = window:AddTab({Title = "Scrolls", Icon = "book"}),
         Codes = window:AddTab({Title = "Codes", Icon = "gift"}),
-        Fun = window:AddTab({Title = "Fun", Icon = "sparkles"}),
         Settings = window:AddTab({Title = "Settings", Icon = "settings"})
     }
 
@@ -75,12 +75,14 @@ if game.PlaceId == 96063223159256 then
     -- FUN
     -- =======================
 
-local auraEnabled = false
+    local auraEnabled = false
+    local targetAuraEnabled = false
     local auraRadius = 40
     local auraInterval = 0.2
-    local auraWhitelist = {
-
-    }
+    local selectedTargetAuraPlayerName
+    local targetAuraPlayerDropdown
+    local auraWhitelistInput = ""
+    local auraWhitelist = {}
 
     -- List of valid weapon names to look for
     local validWeapons = {"Glider", "Hookswords", "Hammers", "War Fans", "Club"}
@@ -95,13 +97,69 @@ local auraEnabled = false
         end)
     end
 
+    local function normalizeAuraName(name)
+        return tostring(name or ""):lower()
+    end
+
+    local function isAuraWhitelisted(targetPlayer)
+        return targetPlayer and auraWhitelist[normalizeAuraName(targetPlayer.Name)]
+    end
+
+    local function getAuraPlayerDropdownValues()
+        local values = {}
+
+        for _, targetPlayer in ipairs(Players:GetPlayers()) do
+            if targetPlayer ~= LocalPlayer then
+                table.insert(values, targetPlayer.Name)
+            end
+        end
+
+        table.sort(values)
+
+        if #values == 0 then
+            table.insert(values, "No players found")
+        end
+
+        return values
+    end
+
+    local function refreshTargetAuraPlayerDropdown()
+        local values = getAuraPlayerDropdownValues()
+
+        if targetAuraPlayerDropdown and targetAuraPlayerDropdown.SetValues then
+            targetAuraPlayerDropdown:SetValues(values)
+        end
+
+        if selectedTargetAuraPlayerName and not Players:FindFirstChild(selectedTargetAuraPlayerName) then
+            selectedTargetAuraPlayerName = nil
+        end
+    end
+
+    local function addAuraWhitelistNames(rawNames)
+        local addedNames = {}
+
+        for username in tostring(rawNames or ""):gmatch("[^,%s]+") do
+            local normalizedName = normalizeAuraName(username)
+            if normalizedName ~= "" then
+                auraWhitelist[normalizedName] = true
+                table.insert(addedNames, username)
+            end
+        end
+
+        if #addedNames > 0 then
+            notify("Aura Whitelist", "Added: " .. table.concat(addedNames, ", "), 3)
+        else
+            notify("Aura Whitelist", "Type one or more usernames first.", 3)
+        end
+    end
+
     local function getAuraTargets(radius)
         local hrp = getHumanoidRootPart()
         if not hrp then return {} end
 
         local targets = {}
         for _, targetPlayer in ipairs(Players:GetPlayers()) do
-            if targetPlayer ~= LocalPlayer and not auraWhitelist[targetPlayer.Name] then
+            if targetPlayer ~= LocalPlayer and not isAuraWhitelisted(targetPlayer) then
                 local targetCharacter = targetPlayer.Character
                 local targetHRP = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
                 local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
@@ -112,6 +170,19 @@ local auraEnabled = false
         end
 
         return targets
+    end
+
+    local function getTargetAuraTargets()
+        local targetPlayer = selectedTargetAuraPlayerName and Players:FindFirstChild(selectedTargetAuraPlayerName)
+        if not targetPlayer or targetPlayer == LocalPlayer or isAuraWhitelisted(targetPlayer) then return {} end
+
+        local targetCharacter = targetPlayer.Character
+        local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+        if targetCharacter and targetHumanoid and targetHumanoid.Health > 0 then
+            return {targetCharacter}
+        end
+
+        return {}
     end
 
     -- DYNAMIC WEAPON DETECTOR
@@ -171,6 +242,15 @@ local auraEnabled = false
         end)
     end
 
+    local function runTargetAuraLoop()
+        task.spawn(function()
+            while targetAuraEnabled do
+                applyAuraEffect(getTargetAuraTargets())
+                task.wait(auraInterval)
+            end
+        end)
+    end
+
     local function setAuraState(enabled)
         if auraEnabled == enabled then return end
         auraEnabled = enabled
@@ -183,22 +263,89 @@ local auraEnabled = false
     end
 
     tabs.Fun:AddToggle("AuraToggle", {
-        Title = "Black Guy Annoyer",
+        Title = "Aura",
         Default = false,
-        Description = "annoy NIGGERS that you don't like"
+        Description = "Affects nearby non-whitelisted players."
     }):OnChanged(function(enabled)
         setAuraState(enabled)
     end)
 
+    targetAuraPlayerDropdown = tabs.Fun:AddDropdown("TargetAuraPlayerDropdown", {
+        Title = "Target Aura Player",
+        Description = "Choose one player for Target Aura to affect.",
+        Values = getAuraPlayerDropdownValues(),
+        Multi = false,
+        Default = 1
+    })
+
+    targetAuraPlayerDropdown:OnChanged(function(value)
+        if value ~= "No players found" then
+            selectedTargetAuraPlayerName = value
+        else
+            selectedTargetAuraPlayerName = nil
+        end
+    end)
+
+    tabs.Fun:AddButton({
+        Title = "Refresh Target Aura Players",
+        Description = "Updates the Target Aura player dropdown.",
+        Callback = function()
+            refreshTargetAuraPlayerDropdown()
+            notify("Target Aura", "Player list refreshed.", 3)
+        end
+    })
+
+    tabs.Fun:AddToggle("TargetAuraToggle", {
+        Title = "Target Aura",
+        Default = false,
+        Description = "Only affects the selected player unless they are whitelisted."
+    }):OnChanged(function(enabled)
+        if targetAuraEnabled == enabled then return end
+        targetAuraEnabled = enabled
+        if enabled then
+            notify("Target Aura On", "Target aura mode activated.", 2)
+            runTargetAuraLoop()
+        else
+            notify("Target Aura Off", "Target aura mode deactivated.", 2)
+        end
+    end)
+
+    tabs.Fun:AddInput("AuraWhitelistInput", {
+        Title = "Aura Whitelist",
+        Default = "",
+        Placeholder = "username1, username2",
+        Numeric = false,
+        Finished = true,
+        Callback = function(value)
+            auraWhitelistInput = value
+        end
+    })
+
+    tabs.Fun:AddButton({
+        Title = "Add Aura Whitelist Usernames",
+        Description = "Adds typed usernames so Aura and Target Aura will not affect them.",
+        Callback = function()
+            addAuraWhitelistNames(auraWhitelistInput)
+        end
+    })
+
     tabs.Fun:AddSlider("AuraRadiusSlider", {
         Title = "Radius",
-        Description = "how far to annoy niggers",
+        Description = "How far Aura reaches.",
         Default = auraRadius,
         Min = 1,
         Max = 200000,
         Rounding = 0
     }):OnChanged(function(value)
         auraRadius = value
+    end)
+
+    Players.PlayerAdded:Connect(refreshTargetAuraPlayerDropdown)
+    Players.PlayerRemoving:Connect(function(leavingPlayer)
+        if leavingPlayer.Name == selectedTargetAuraPlayerName then
+            selectedTargetAuraPlayerName = nil
+        end
+        refreshTargetAuraPlayerDropdown()
     end)
 
     local Families = {"Yakoda","Lozai","Leifong","Tarrlok","Sozin","Hama","Gyatso","Vaan"}
