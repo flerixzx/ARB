@@ -38,7 +38,7 @@ if game.PlaceId == 96063223159256 then
 
     local window = Fluent:CreateWindow({
         Title = "ARB: Script v2 (Testing)",
-        SubTitle = "by xyro",
+        SubTitle = "by niggerniggernigger",
         TabWidth = 160,
         Size = UDim2.fromOffset(580, 460),
         Acrylic = true,
