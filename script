@@ -71,9 +71,7 @@ if game.PlaceId == 96063223159256 then
 
     local getHumanoidRootPart
 
-    -- =======================
     -- FUN
-    -- =======================
 
     local auraEnabled = false
     local targetAuraEnabled = false
