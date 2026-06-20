@@ -61,7 +61,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Players:AddToggle("NoCooldownToggle", {
         Title = "No Cooldown",
         Default = false,
-        Description = "Removes wait-based cooldown delays"
+        Description = "removes wait-based cooldown delays"
     }):OnChanged(function(enabled)
         local hooked = setNoCooldownState(enabled)
         if enabled and not hooked then
@@ -79,8 +79,14 @@ if game.PlaceId == 96063223159256 then
     local auraInterval = 0.2
     local selectedTargetAuraPlayerName
     local targetAuraPlayerDropdown
-    local auraWhitelistInput = ""
+    local selectedAuraWhitelistPlayerName
+    local auraWhitelistDropdown
     local auraWhitelist = {}
+
+    local projectileAimbotEnabled = false
+    local projectileAimbotFOV = 120
+    local projectileAimbotHooked = false
+    local originalNamecall
 
     -- List of valid weapon names to look for
     local validWeapons = {"Glider", "Hookswords", "Hammers", "War Fans", "Club"}
@@ -128,26 +134,26 @@ if game.PlaceId == 96063223159256 then
             targetAuraPlayerDropdown:SetValues(values)
         end
 
+        if auraWhitelistDropdown and auraWhitelistDropdown.SetValues then
+            auraWhitelistDropdown:SetValues(values)
+        end
+
         if selectedTargetAuraPlayerName and not Players:FindFirstChild(selectedTargetAuraPlayerName) then
             selectedTargetAuraPlayerName = nil
         end
+
+        if selectedAuraWhitelistPlayerName and not Players:FindFirstChild(selectedAuraWhitelistPlayerName) then
+            selectedAuraWhitelistPlayerName = nil
+        end
     end
 
-    local function addAuraWhitelistNames(rawNames)
-        local addedNames = {}
-
-        for username in tostring(rawNames or ""):gmatch("[^,%s]+") do
-            local normalizedName = normalizeAuraName(username)
-            if normalizedName ~= "" then
-                auraWhitelist[normalizedName] = true
-                table.insert(addedNames, username)
-            end
-        end
-
-        if #addedNames > 0 then
-            notify("Aura Whitelist", "Added: " .. table.concat(addedNames, ", "), 3)
+    local function addAuraWhitelistPlayer(playerName)
+        local targetPlayer = playerName and Players:FindFirstChild(playerName)
+        if targetPlayer and targetPlayer ~= LocalPlayer then
+            auraWhitelist[normalizeAuraName(targetPlayer.Name)] = true
+            notify("Aura Whitelist", "Added: " .. targetPlayer.Name, 3)
         else
-            notify("Aura Whitelist", "Type one or more usernames first.", 3)
+            notify("Aura Whitelist", "Select an online player first.", 3)
         end
     end
 
@@ -181,6 +187,110 @@ if game.PlaceId == 96063223159256 then
         end
 
         return {}
+    end
+
+    local function getScreenCenter()
+        local camera = workspace.CurrentCamera
+        local viewportSize = camera and camera.ViewportSize
+        if not viewportSize then return Vector2.new(0, 0) end
+        return Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
+    end
+
+    local function getProjectileAimbotTarget()
+        local camera = workspace.CurrentCamera
+        if not camera then return nil end
+
+        local screenCenter = getScreenCenter()
+        local closestPart
+        local closestDistance = projectileAimbotFOV
+
+        for _, targetPlayer in ipairs(Players:GetPlayers()) do
+            if targetPlayer ~= LocalPlayer and not isAuraWhitelisted(targetPlayer) then
+                local character = targetPlayer.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                local targetPart = character and (character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart"))
+                if targetPart and humanoid and humanoid.Health > 0 then
+                    local screenPosition, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+                    if onScreen and screenPosition.Z > 0 then
+                        local distance = (Vector2.new(screenPosition.X, screenPosition.Y) - screenCenter).Magnitude
+                        if distance <= closestDistance then
+                            closestDistance = distance
+                            closestPart = targetPart
+                        end
+                    end
+                end
+            end
+        end
+
+        return closestPart
+    end
+
+    local function remoteLooksCurvable(remote)
+        local name = tostring(remote and remote.Name or ""):lower()
+        local parentName = tostring(remote and remote.Parent and remote.Parent.Name or ""):lower()
+        local fullName = ""
+        pcall(function()
+            fullName = tostring(remote:GetFullName()):lower()
+        end)
+
+        return name:find("projectile")
+            or name:find("curve")
+            or name:find("shoot")
+            or name:find("cast")
+            or parentName:find("projectile")
+            or parentName:find("curve")
+            or fullName:find("projectile")
+            or fullName:find("curv")
+    end
+
+    local function aimProjectileArgs(args, targetPosition)
+        local changed = false
+        for index, value in ipairs(args) do
+            if typeof(value) == "Vector3" then
+                args[index] = targetPosition
+                changed = true
+            elseif typeof(value) == "CFrame" then
+                args[index] = CFrame.new(value.Position, targetPosition)
+                changed = true
+            elseif typeof(value) == "table" then
+                for key, nestedValue in pairs(value) do
+                    if typeof(nestedValue) == "Vector3" and tostring(key):lower():find("pos") then
+                        value[key] = targetPosition
+                        changed = true
+                    elseif typeof(nestedValue) == "CFrame" then
+                        value[key] = CFrame.new(nestedValue.Position, targetPosition)
+                        changed = true
+                    end
+                end
+            end
+        end
+
+        return changed
+    end
+
+    local function setProjectileAimbotState(enabled)
+        projectileAimbotEnabled = enabled
+        if projectileAimbotHooked or type(hookmetamethod) ~= "function" or type(newcclosure) ~= "function" then
+            return projectileAimbotHooked
+        end
+
+        originalNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+
+            if projectileAimbotEnabled and method == "FireServer" and remoteLooksCurvable(self) then
+                local targetPart = getProjectileAimbotTarget()
+                if targetPart then
+                    aimProjectileArgs(args, targetPart.Position)
+                    return originalNamecall(self, unpack(args))
+                end
+            end
+
+            return originalNamecall(self, ...)
+        end))
+
+        projectileAimbotHooked = true
+        return true
     end
 
     -- DYNAMIC WEAPON DETECTOR
@@ -260,17 +370,39 @@ if game.PlaceId == 96063223159256 then
         end
     end
 
+    tabs.Players:AddToggle("ProjectileAimbotToggle", {
+        Title = "Curving Projectile Aimbot",
+        Default = false,
+        Description = "redirects curvable projectile shots toward the closest opponent in fov"
+    }):OnChanged(function(enabled)
+        local hooked = setProjectileAimbotState(enabled)
+        if enabled and not hooked then
+            Fluent:Notify({Title = "Projectile Aimbot", Content = "hookmetamethod is not available in this executor.", Duration = 4})
+        end
+    end)
+
+    tabs.Players:AddSlider("ProjectileAimbotFOVSlider", {
+        Title = "Projectile Aimbot FOV",
+        Description = "sets the screen fov size for projectile targeting",
+        Default = projectileAimbotFOV,
+        Min = 25,
+        Max = 500,
+        Rounding = 0
+    }):OnChanged(function(value)
+        projectileAimbotFOV = value
+    end)
+
     tabs.Fun:AddToggle("Black guy annoyer", {
         Title = "Black guy annoyer",
         Default = false,
-        Description = "annoy NIGGERS that you dont like"
+        Description = "annoy niggers that you dont like"
     }):OnChanged(function(enabled)
         setAuraState(enabled)
     end)
 
     targetAuraPlayerDropdown = tabs.Fun:AddDropdown("TargetAuraPlayerDropdown", {
         Title = "Target black people",
-        Description = "Choose one nigger to Target.",
+        Description = "choose one nigger to target.",
         Values = getAuraPlayerDropdownValues(),
         Multi = false,
         Default = 1
@@ -286,7 +418,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Fun:AddButton({
         Title = "Refresh players",
-        Description = "Updates the players.",
+        Description = "updates the players.",
         Callback = function()
             refreshTargetAuraPlayerDropdown()
             notify("Target Aura", "Player list refreshed.", 3)
@@ -296,7 +428,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Fun:AddToggle("blackpeopleannoyer", {
         Title = "Target black people",
         Default = false,
-        Description = "Only affects the selected player unless they are whitelisted."
+        Description = "only affects the selected player unless they are whitelisted."
     }):OnChanged(function(enabled)
         if targetAuraEnabled == enabled then return end
         targetAuraEnabled = enabled
@@ -308,28 +440,33 @@ if game.PlaceId == 96063223159256 then
         end
     end)
 
-    tabs.Fun:AddInput("AuraWhitelistInput", {
-        Title = "White People Whitelist",
-        Default = "",
-        Placeholder = "username1, username2",
-        Numeric = false,
-        Finished = true,
-        Callback = function(value)
-            auraWhitelistInput = value
-        end
+    auraWhitelistDropdown = tabs.Fun:AddDropdown("AuraWhitelistDropdown", {
+        Title = "Whitelist player",
+        Description = "choose an online player to whitelist",
+        Values = getAuraPlayerDropdownValues(),
+        Multi = false,
+        Default = 1
     })
 
+    auraWhitelistDropdown:OnChanged(function(value)
+        if value ~= "No players found" then
+            selectedAuraWhitelistPlayerName = value
+        else
+            selectedAuraWhitelistPlayerName = nil
+        end
+    end)
+
     tabs.Fun:AddButton({
-        Title = "Add white people to the Whitelist",
-        Description = "add them",
+        Title = "Add whitelist player",
+        Description = "add the selected online player",
         Callback = function()
-            addAuraWhitelistNames(auraWhitelistInput)
+            addAuraWhitelistPlayer(selectedAuraWhitelistPlayerName)
         end
     })
 
     tabs.Fun:AddSlider("Radius", {
         Title = "Radius",
-        Description = "How far to annoy blackies.",
+        Description = "how far to annoy blackies.",
         Default = auraRadius,
         Min = 1,
         Max = 200000,
@@ -455,14 +592,14 @@ if game.PlaceId == 96063223159256 then
     tabs.NPCs:AddToggle("AutoGripToggle", {
         Title = "Auto Grip NPCs",
         Default = false,
-        Description = "Grips nearest NPC"
+        Description = "grips nearest npc"
     }):OnChanged(function(enabled)
         setAutoGripNPCState(enabled)
     end)
 
     tabs.NPCs:AddSlider("NpcGripIntervalSlider", {
         Title = "NPC Grip Interval (s)",
-        Description = "Higher value = less lag and lower ping load",
+        Description = "higher value = less lag and lower ping load",
         Default = npcGripInterval,
         Min = 0.005,
         Max = 1,
@@ -473,7 +610,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.NPCs:AddSlider("NpcGripBurstSlider", {
         Title = "NPC Grip Burst",
-        Description = "How many grip fires per interval",
+        Description = "how many grip fires per interval",
         Default = npcGripBurstCount,
         Min = 1,
         Max = 12,
@@ -484,7 +621,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.NPCs:AddSlider("NpcGripDistanceSlider", {
         Title = "NPC Grip Max Distance",
-        Description = "Only grips NPCs within this distance",
+        Description = "only grips npcs within this distance",
         Default = npcGripMaxDistance,
         Min = 10,
         Max = 150,
@@ -691,7 +828,7 @@ if game.PlaceId == 96063223159256 then
 
     autoKillPlayerDropdown = tabs.Players:AddDropdown("AutoKillPlayerDropdown", {
         Title = "Auto Kill Player",
-        Description = "Choose the player Auto Kill should target",
+        Description = "choose the player auto kill should target",
         Values = getPlayerDropdownValues(),
         Multi = false,
         Default = 1
@@ -707,7 +844,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Players:AddButton({
         Title = "Refresh Player List",
-        Description = "Updates the Auto Kill player dropdown",
+        Description = "updates the auto kill player dropdown",
         Callback = function()
             refreshAutoKillPlayerDropdown()
             Fluent:Notify({Title = "Auto Kill", Content = "Player list refreshed.", Duration = 3})
@@ -717,7 +854,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Players:AddToggle("AutoKillPlayerToggle", {
         Title = "Auto Kill Selected Player",
         Default = false,
-        Description = "Teleports behind and attacks the selected player until downed, then grips"
+        Description = "teleports behind and attacks the selected player until downed, then grips"
     }):OnChanged(function(enabled)
         autoKillPlayerEnabled = enabled
 
@@ -813,7 +950,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Players:AddToggle("AutoGripPlayersToggle", {
         Title = "Auto Grip Players",
         Default = false,
-        Description = "Fast-grips the nearest downed non-whitelisted player within range"
+        Description = "fast-grips the nearest downed non-whitelisted player within range"
     }):OnChanged(function(enabled)
         if autoGripPlayersEnabled == enabled then return end
         autoGripPlayersEnabled = enabled
@@ -833,7 +970,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Players:AddSlider("PlayerGripDistanceSlider", {
         Title = "Player Grip Max Distance",
-        Description = "Only grips downed players within this distance",
+        Description = "only grips downed players within this distance",
         Default = playerGripMaxDistance,
         Min = 10,
         Max = 150,
@@ -906,7 +1043,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Players:AddToggle("PlayerStatsDisplayToggle", {
         Title = "Show Player Stats",
         Default = false,
-        Description = "Displays Wisdom, MaxChi, Yuanz, and Bad Karma"
+        Description = "displays wisdom, maxchi, yuanz, and bad karma"
     }):OnChanged(function(enabled)
         playerStatsDisplayEnabled = enabled
         if enabled then
@@ -1185,14 +1322,14 @@ if game.PlaceId == 96063223159256 then
     tabs.Players:AddToggle("HitboxExpanderToggle", {
         Title = "Hitbox Expander",
         Default = false,
-        Description = "Expands visible player hitboxes; players pass through automatically"
+        Description = "expands visible player hitboxes; players pass through automatically"
     }):OnChanged(function(enabled)
         setHitboxExpanderState(enabled)
     end)
 
     tabs.Players:AddSlider("HitboxSizeSlider", {
         Title = "Hitbox Size (Studs)",
-        Description = "Changes expanded hitbox size",
+        Description = "changes expanded hitbox size",
         Default = hitboxSizeStuds,
         Min = 2,
         Max = 25,
@@ -1204,7 +1341,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Players:AddSlider("HitboxTransparencySlider", {
         Title = "Hitbox Transparency",
-        Description = "Changes expanded hitbox transparency",
+        Description = "changes expanded hitbox transparency",
         Default = hitboxTransparency,
         Min = 0,
         Max = 1,
@@ -1226,7 +1363,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Players:AddToggle("PlayerESPToggle", {
         Title = "Player ESP",
         Default = false,
-        Description = "Shows ESP nametags for players"
+        Description = "shows esp nametags for players"
     }):OnChanged(function(enabled)
         playerESPEnabled = enabled
         updateESPState()
@@ -1235,7 +1372,7 @@ if game.PlaceId == 96063223159256 then
     tabs.NPCs:AddToggle("NpcESPToggle", {
         Title = "NPC Esp",
         Default = false,
-        Description = "Shows NPC nametag ESP"
+        Description = "shows npc nametag esp"
     }):OnChanged(function(enabled)
         npcESPEnabled = enabled
         updateESPState()
@@ -1243,7 +1380,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.NPCs:AddSlider("NpcESPRangeSlider", {
         Title = "NPC ESP Max Distance",
-        Description = "Shows only NPCs within this range",
+        Description = "shows only npcs within this range",
         Default = npcESPMaxDistance,
         Min = 50,
         Max = 5000,
@@ -1258,7 +1395,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Meditation:AddToggle("AutoMeditateToggle", {
         Title = "Auto Meditate",
         Default = false,
-        Description = "Automatically meditates for you"
+        Description = "automatically meditates for you"
     }):OnChanged(function(enabled)
         if autoMeditateEnabled == enabled then return end
         autoMeditateEnabled = enabled
@@ -1356,7 +1493,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Spinning:AddDropdown("FamilyDropdown", {
         Title = "Select Families",
-        Description = "Choose families to spin for (multiple allowed)",
+        Description = "choose families to spin for multiple allowed",
         Values = Families,
         Multi = true,
         Default = {}
@@ -1369,7 +1506,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Spinning:AddDropdown("TraitDropdown", {
         Title = "Select Traits",
-        Description = "Choose traits to spin for (multiple allowed)",
+        Description = "choose traits to spin for multiple allowed",
         Values = Traits,
         Multi = true,
         Default = {}
@@ -1382,7 +1519,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Spinning:AddToggle("AutoSpinFamilyToggle", {
         Title = "Auto Spin Family",
-        Description = "Spins only for selected families",
+        Description = "spins only for selected families",
         Default = false
     }):OnChanged(function(state)
         autoSpinFamilyEnabled = state
@@ -1391,7 +1528,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Spinning:AddToggle("AutoSpinTraitToggle", {
         Title = "Auto Spin Trait",
-        Description = "Spins only for selected traits",
+        Description = "spins only for selected traits",
         Default = false
     }):OnChanged(function(state)
         autoSpinTraitEnabled = state
@@ -1400,7 +1537,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Codes:AddToggle("AutoRedeemSpin", {
         Title = "Auto Redeem Spin Codes",
-        Description = "Redeem all spin codes automatically once",
+        Description = "redeem all spin codes automatically once",
         Default = false
     }):OnChanged(function(state)
         if state then
@@ -1417,7 +1554,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Codes:AddDropdown("ElementDropdown", {
         Title = "Select Target Element",
-        Description = "Select element to stop auto redeem",
+        Description = "select element to stop auto redeem",
         Values = Elements,
         Multi = false,
         Default = 1
@@ -1427,7 +1564,7 @@ if game.PlaceId == 96063223159256 then
 
     tabs.Codes:AddToggle("AutoRedeemElement", {
         Title = "Auto Redeem Element Codes",
-        Description = "Redeem element codes until target element is rolled",
+        Description = "redeem element codes until target element is rolled",
         Default = false
     }):OnChanged(function(state)
         if state then
@@ -1448,7 +1585,7 @@ if game.PlaceId == 96063223159256 then
    -- Scrolls
     tabs.Scrolls:AddButton({
         Title = "Get Water Wave",
-        Description = "Click for Water Wave Scroll",
+        Description = "click for water wave scroll",
         Callback = function()
             local v23 = 1423 - (630 + 793) -- 0
             local v24
@@ -1469,7 +1606,7 @@ if game.PlaceId == 96063223159256 then
 
         tabs.Scrolls:AddButton({
         Title = "Get Air Tornado",
-        Description = "Click for Air Tornado Scroll",
+        Description = "click for air tornado scroll",
         Callback = function()
             local v23 = 1423 - (630 + 793) -- 0
             local v24
@@ -1490,7 +1627,7 @@ if game.PlaceId == 96063223159256 then
 
         tabs.Scrolls:AddButton({
         Title = "Get Comet Jab",
-        Description = "Click for Comet Jab Scroll",
+        Description = "click for comet jab scroll",
         Callback = function()
             local v23 = 1423 - (630 + 793) -- 0
             local v24
@@ -1511,7 +1648,7 @@ if game.PlaceId == 96063223159256 then
 
         tabs.Scrolls:AddButton({
         Title = "Get Earth Trap",
-        Description = "Click for Earth Trap Scroll",
+        Description = "click for earth trap scroll",
         Callback = function()
             local v23 = 1423 - (630 + 793) -- 0
             local v24
@@ -1532,7 +1669,7 @@ if game.PlaceId == 96063223159256 then
 
         tabs.Scrolls:AddButton({
         Title = "Get Fire Step",
-        Description = "Click for Fire Step",
+        Description = "click for fire step",
         Callback = function()
             local v23 = 1423 - (630 + 793) -- 0
             local v24
@@ -1553,7 +1690,7 @@ if game.PlaceId == 96063223159256 then
 
         tabs.Scrolls:AddButton({
         Title = "Get Water Barrage",
-        Description = "Click for Water Barrage Scroll",
+        Description = "click for water barrage scroll",
         Callback = function()
             local v23 = 1423 - (630 + 793) -- 0
             local v24
@@ -1574,7 +1711,7 @@ if game.PlaceId == 96063223159256 then
 
         tabs.Scrolls:AddButton({
         Title = "Get Earth Launch",
-        Description = "Click for Earth Launch Scroll",
+        Description = "click for earth launch scroll",
         Callback = function()
             local v23 = 1423 - (630 + 793) -- 0
             local v24
@@ -1595,7 +1732,7 @@ if game.PlaceId == 96063223159256 then
 
         tabs.Scrolls:AddButton({
         Title = "Get Blood Grab",
-        Description = "Click for Blood Grab Scroll",
+        Description = "click for blood grab scroll",
         Callback = function()
             local v23 = 1423 - (630 + 793) -- 0
             local v24
@@ -1616,7 +1753,7 @@ if game.PlaceId == 96063223159256 then
 
         tabs.Scrolls:AddButton({
         Title = "Get Lava Line",
-        Description = "Click for Lava Line",
+        Description = "click for lava line",
         Callback = function()
             local v23 = 1423 - (630 + 793) -- 0
             local v24
