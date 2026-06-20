@@ -59,7 +59,7 @@ if game.PlaceId == 96063223159256 then
         Settings = window:AddTab({Title = "Settings", Icon = "settings"})
     }
 
-    local removeAnticheatScripts
+    local removeAntiCheatScripts
 
     tabs.Players:AddToggle("NoCooldownToggle", {
         Title = "No Cooldown",
@@ -73,10 +73,10 @@ if game.PlaceId == 96063223159256 then
     end)
 
     tabs.Fun:AddButton({
-        Title = "Remove Anticheat Scripts",
-        Description = "moves Anticheat 1/2/3 out of Rog without deleting or disabling them",
+        Title = "Remove AntiCheat Scripts",
+        Description = "moves AntiCheat 1/2/3 out of Rog without deleting or disabling them",
         Callback = function()
-            removeAnticheatScripts()
+            removeAntiCheatScripts()
         end
     })
 
@@ -112,33 +112,33 @@ if game.PlaceId == 96063223159256 then
         end)
     end
 
-    local AnticheatScriptNames = {"Anticheat 1", "Anticheat 2", "Anticheat 3"}
-    local AnticheatStorageFolder
+    local AntiCheatScriptNames = {"AntiCheat 1", "AntiCheat 2", "AntiCheat 3"}
+    local AntiCheatStorageFolder
 
-    local function getAnticheatStorageFolder()
-        if AnticheatStorageFolder and AnticheatStorageFolder.Parent then
-            return AnticheatStorageFolder
+    local function getAntiCheatStorageFolder()
+        if AntiCheatStorageFolder and AntiCheatStorageFolder.Parent then
+            return AntiCheatStorageFolder
         end
 
-        AnticheatStorageFolder = ReplicatedStorage:FindFirstChild("ARBAnticheatScriptStorage")
-        if not AnticheatStorageFolder then
-            AnticheatStorageFolder = Instance.new("Folder")
-            AnticheatStorageFolder.Name = "ARBAnticheatScriptStorage"
-            AnticheatStorageFolder.Parent = ReplicatedStorage
+        AntiCheatStorageFolder = ReplicatedStorage:FindFirstChild("ARBAntiCheatScriptStorage")
+        if not AntiCheatStorageFolder then
+            AntiCheatStorageFolder = Instance.new("Folder")
+            AntiCheatStorageFolder.Name = "ARBAntiCheatScriptStorage"
+            AntiCheatStorageFolder.Parent = ReplicatedStorage
         end
 
-        return AnticheatStorageFolder
+        return AntiCheatStorageFolder
     end
 
-    local function moveAnticheatScriptsFromRog(rogFolder, storageFolder)
+    local function moveAntiCheatScriptsFromRog(rogFolder, storageFolder)
         local moved = 0
         if not rogFolder then return moved end
 
-        for _, scriptName in ipairs(AnticheatScriptNames) do
-            local AnticheatScript = rogFolder:FindFirstChild(scriptName)
-            if AnticheatScript and (AnticheatScript:IsA("LocalScript") or AnticheatScript:IsA("Script")) then
-                AnticheatScript:SetAttribute("ARBOriginalParentPath", AnticheatScript:GetFullName())
-                AnticheatScript.Parent = storageFolder
+        for _, scriptName in ipairs(AntiCheatScriptNames) do
+            local AntiCheatScript = rogFolder:FindFirstChild(scriptName)
+            if AntiCheatScript and (AntiCheatScript:IsA("LocalScript") or AntiCheatScript:IsA("Script")) then
+                AntiCheatScript:SetAttribute("ARBOriginalParentPath", AntiCheatScript:GetFullName())
+                AntiCheatScript.Parent = storageFolder
                 moved += 1
             end
         end
@@ -146,18 +146,18 @@ if game.PlaceId == 96063223159256 then
         return moved
     end
 
-    removeAnticheatScripts = function()
-        local storageFolder = getAnticheatStorageFolder()
+    removeAntiCheatScripts = function()
+        local storageFolder = getAntiCheatStorageFolder()
         local moved = 0
 
         local livesFolder = workspace:FindFirstChild("Lives") or workspace:FindFirstChild("lives")
         local liveCharacter = livesFolder and livesFolder:FindFirstChild(LocalPlayer.Name)
-        moved += moveAnticheatScriptsFromRog(liveCharacter and liveCharacter:FindFirstChild("Rog"), storageFolder)
+        moved += moveAntiCheatScriptsFromRog(liveCharacter and liveCharacter:FindFirstChild("Rog"), storageFolder)
 
         local starterCharacterScripts = StarterPlayer:FindFirstChild("StarterCharacterScripts")
-        moved += moveAnticheatScriptsFromRog(starterCharacterScripts and starterCharacterScripts:FindFirstChild("Rog"), storageFolder)
+        moved += moveAntiCheatScriptsFromRog(starterCharacterScripts and starterCharacterScripts:FindFirstChild("Rog"), storageFolder)
 
-        notify("Anticheat Scripts", moved > 0 and ("Moved " .. moved .. " Anticheat script(s) into safe storage.") or "No Anticheat scripts found.", 4)
+        notify("AntiCheat Scripts", moved > 0 and ("Moved " .. moved .. " AntiCheat script(s) into safe storage.") or "No AntiCheat scripts found.", 4)
         return moved
     end
 
