@@ -1391,6 +1391,80 @@ if game.PlaceId == 96063223159256 then
 
     -- Auto Meditate
     local autoMeditateEnabled = false
+    local autoGlitchMeditateEnabled = false
+    local autoGlitchMeditateConnection
+    local keySpamGui
+    local meditateRemote = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("Meditate")
+    local createKeyRemote = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("Create Key")
+
+    local function getKeySpamGui()
+        if keySpamGui and keySpamGui.Parent then
+            return keySpamGui
+        end
+
+        keySpamGui = player:WaitForChild("PlayerGui"):WaitForChild("Key Spam")
+        return keySpamGui
+    end
+
+    local function completeMeditationKey(child)
+        if child and string.find(child.Name, "Key") then
+            createKeyRemote:FireServer("Complete")
+            task.defer(function()
+                pcall(function()
+                    child:Destroy()
+                end)
+            end)
+        end
+    end
+
+    local function clearExistingMeditationKeys()
+        local gui = getKeySpamGui()
+        for _, child in ipairs(gui:GetChildren()) do
+            completeMeditationKey(child)
+        end
+    end
+
+    local function stopGlitchMeditate()
+        autoGlitchMeditateEnabled = false
+
+        if autoGlitchMeditateConnection then
+            autoGlitchMeditateConnection:Disconnect()
+            autoGlitchMeditateConnection = nil
+        end
+    end
+
+    local function startGlitchMeditate()
+        stopGlitchMeditate()
+        autoGlitchMeditateEnabled = true
+
+        local gui = getKeySpamGui()
+        clearExistingMeditationKeys()
+
+        autoGlitchMeditateConnection = gui.ChildAdded:Connect(function(child)
+            if autoGlitchMeditateEnabled then
+                completeMeditationKey(child)
+            end
+        end)
+
+        task.spawn(function()
+            while autoGlitchMeditateEnabled do
+                for _ = 1, 3 do
+                    if not autoGlitchMeditateEnabled then break end
+                    meditateRemote:FireServer("Start")
+                    task.wait(0.05)
+                end
+
+                for _ = 1, 12 do
+                    if not autoGlitchMeditateEnabled then break end
+                    createKeyRemote:FireServer("Complete")
+                    task.wait(0.05)
+                end
+
+                clearExistingMeditationKeys()
+                task.wait(0.35)
+            end
+        end)
+    end
 
     tabs.Meditation:AddToggle("AutoMeditateToggle", {
         Title = "Auto Meditate",
@@ -1403,15 +1477,27 @@ if game.PlaceId == 96063223159256 then
         if enabled then
             task.spawn(function()
                 while autoMeditateEnabled do
-                    game.ReplicatedStorage.RemoteEvents.Meditate:FireServer("Start")
+                    meditateRemote:FireServer("Start")
                     for _ = 1, 5 do
                         if not autoMeditateEnabled then break end
-                        game.ReplicatedStorage.RemoteEvents["Create Key"]:FireServer("Complete")
+                        createKeyRemote:FireServer("Complete")
                         task.wait(0.1)
                     end
                     task.wait(1.5)
                 end
             end)
+        end
+    end)
+
+    tabs.Meditation:AddToggle("GlitchAutoMeditateToggle", {
+        Title = "Glitch Auto Meditate",
+        Default = false,
+        Description = "rapidly starts meditation and completes spawned keys multiple times"
+    }):OnChanged(function(enabled)
+        if enabled then
+            startGlitchMeditate()
+        else
+            stopGlitchMeditate()
         end
     end)
 
