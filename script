@@ -5,6 +5,7 @@ if game.PlaceId == 96063223159256 then
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local RunService = game:GetService("RunService")
     local StarterGui = game:GetService("StarterGui")
+    local StarterPlayer = game:GetService("StarterPlayer")
     local player = Players.LocalPlayer
     local LocalPlayer = player
 
@@ -58,6 +59,8 @@ if game.PlaceId == 96063223159256 then
         Settings = window:AddTab({Title = "Settings", Icon = "settings"})
     }
 
+    local removeThrowupScripts
+
     tabs.Players:AddToggle("NoCooldownToggle", {
         Title = "No Cooldown",
         Default = false,
@@ -68,6 +71,14 @@ if game.PlaceId == 96063223159256 then
             Fluent:Notify({Title = "No Cooldown", Content = "hookfunction is not available in this executor.", Duration = 4})
         end
     end)
+
+    tabs.Fun:AddButton({
+        Title = "Remove Throwup Scripts",
+        Description = "removes throwup 1/2/3 from Rog without deleting or disabling them",
+        Callback = function()
+            removeThrowupScripts()
+        end
+    })
 
     local getHumanoidRootPart
 
@@ -99,6 +110,61 @@ if game.PlaceId == 96063223159256 then
                 Duration = duration or 3
             })
         end)
+    end
+
+    local throwupScriptNames = {"throwup 1", "throwup 2", "throwup 3"}
+    local quarantinedThrowupScripts = {}
+
+    local function isThrowupScript(instance)
+        if not (instance and (instance:IsA("LocalScript") or instance:IsA("Script"))) then
+            return false
+        end
+
+        for _, scriptName in ipairs(throwupScriptNames) do
+            if instance.Name == scriptName then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    local function quarantineThrowupScript(throwupScript)
+        if not isThrowupScript(throwupScript) or quarantinedThrowupScripts[throwupScript] then
+            return false
+        end
+
+        quarantinedThrowupScripts[throwupScript] = throwupScript.Parent
+        throwupScript:SetAttribute("ARBOriginalParentPath", throwupScript:GetFullName())
+        throwupScript.Parent = nil
+        return true
+    end
+
+    local function quarantineThrowupScriptsFromRog(rogFolder)
+        local removed = 0
+        if not rogFolder then return removed end
+
+        for _, child in ipairs(rogFolder:GetChildren()) do
+            if quarantineThrowupScript(child) then
+                removed += 1
+            end
+        end
+
+        return removed
+    end
+
+    removeThrowupScripts = function()
+        local removed = 0
+
+        local livesFolder = workspace:FindFirstChild("Lives") or workspace:FindFirstChild("lives")
+        local liveCharacter = livesFolder and livesFolder:FindFirstChild(LocalPlayer.Name)
+        removed += quarantineThrowupScriptsFromRog(liveCharacter and liveCharacter:FindFirstChild("Rog"))
+
+        local starterCharacterScripts = StarterPlayer:FindFirstChild("StarterCharacterScripts")
+        removed += quarantineThrowupScriptsFromRog(starterCharacterScripts and starterCharacterScripts:FindFirstChild("Rog"))
+
+        notify("Throwup Scripts", removed > 0 and ("Removed " .. removed .. " throwup script(s) without deleting or disabling them.") or "No throwup scripts found.", 4)
+        return removed
     end
 
     local function normalizeAuraName(name)
