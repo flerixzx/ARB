@@ -1448,20 +1448,16 @@ if game.PlaceId == 96063223159256 then
 
         task.spawn(function()
             while autoGlitchMeditateEnabled do
+                meditateRemote:FireServer("Start")
+
                 for _ = 1, 3 do
                     if not autoGlitchMeditateEnabled then break end
-                    meditateRemote:FireServer("Start")
-                    task.wait(0.05)
-                end
-
-                for _ = 1, 12 do
-                    if not autoGlitchMeditateEnabled then break end
                     createKeyRemote:FireServer("Complete")
-                    task.wait(0.05)
+                    clearExistingMeditationKeys()
+                    task.wait(0.3)
                 end
 
-                clearExistingMeditationKeys()
-                task.wait(0.35)
+                task.wait(1.25)
             end
         end)
     end
@@ -1492,7 +1488,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Meditation:AddToggle("GlitchAutoMeditateToggle", {
         Title = "Glitch Auto Meditate",
         Default = false,
-        Description = "rapidly starts meditation and completes spawned keys multiple times"
+        Description = "completes spawned keys with safer repeated attempts"
     }):OnChanged(function(enabled)
         if enabled then
             startGlitchMeditate()
