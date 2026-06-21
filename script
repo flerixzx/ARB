@@ -1467,6 +1467,48 @@ if game.PlaceId == 96063223159256 then
         end
     end)
 
+    local stopMeditationSpamEnabled = false
+    local stopMeditationSpamRunning = false
+
+    local function getStopMeditationEvent()
+        local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        return character
+            :WaitForChild("Scripts")
+            :WaitForChild("Server")
+            :WaitForChild("Meditation")
+            :WaitForChild("Event")
+    end
+
+    local function startStopMeditationSpam()
+        if stopMeditationSpamRunning then return end
+
+        stopMeditationSpamRunning = true
+
+        task.spawn(function()
+            while stopMeditationSpamEnabled do
+                local fired = pcall(function()
+                    getStopMeditationEvent():FireServer("Stop")
+                end)
+
+                task.wait(fired and 0.05 or 0.5)
+            end
+
+            stopMeditationSpamRunning = false
+        end)
+    end
+
+    tabs.Meditation:AddToggle("StopMeditationSpamToggle", {
+        Title = "Spam Meditation Stop",
+        Default = false,
+        Description = "keeps firing the meditation stop event until disabled"
+    }):OnChanged(function(enabled)
+        stopMeditationSpamEnabled = enabled
+
+        if enabled then
+            startStopMeditationSpam()
+        end
+    end)
+
     -- Auto Spin
     local autoSpinFamilyEnabled = false
     local autoSpinTraitEnabled = false
