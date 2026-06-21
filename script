@@ -1390,30 +1390,107 @@ if game.PlaceId == 96063223159256 then
     end)
 
     -- Auto Meditate
-    local autoMeditateEnabled = false
+    local AutoMeditate = {}
+    AutoMeditate.__index = AutoMeditate
+
+    function AutoMeditate.new()
+        local self = setmetatable({}, AutoMeditate)
+
+        self.player = LocalPlayer
+        self.keyGui = self.player.PlayerGui:WaitForChild("Key Spam")
+        self.meditateRemote = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("Meditate")
+        self.createKeyRemote = ReplicatedStorage:WaitForChild("RemoteEvents"):WaitForChild("Create Key")
+        self.active = true
+        self.connection = nil
+
+        self:startListening()
+        self:startLoop()
+
+        return self
+    end
+
+    function AutoMeditate:startListening()
+        for _, child in ipairs(self.keyGui:GetChildren()) do
+            if string.find(child.Name, "Key") then
+                self.createKeyRemote:FireServer("Complete")
+                child:Destroy()
+            end
+        end
+
+        self.connection = self.keyGui.ChildAdded:Connect(function(child)
+            if self.active and string.find(child.Name, "Key") then
+                self.createKeyRemote:FireServer("Complete")
+
+                task.spawn(function()
+                    pcall(function()
+                        child:Destroy()
+                    end)
+                end)
+            end
+        end)
+    end
+
+    local function getMeditationStopEvent()
+        local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local scripts = character:WaitForChild("Scripts")
+        local server = scripts:WaitForChild("Server")
+        local meditation = server:WaitForChild("Meditation")
+        return meditation:WaitForChild("Event")
+    end
+
+    local function fireMeditationStop()
+        local meditationStopEvent = getMeditationStopEvent()
+        local args = {"Stop"}
+        meditationStopEvent:FireServer(unpack(args))
+    end
+
+    function AutoMeditate:startLoop()
+        task.spawn(function()
+            while self.active do
+                self.meditateRemote:FireServer("Start")
+                task.wait()
+            end
+        end)
+    end
+
+    function AutoMeditate:stop()
+        self.active = false
+
+        if self.connection then
+            self.connection:Disconnect()
+            self.connection = nil
+        end
+    end
+
+    local autoMeditateInstance
 
     tabs.Meditation:AddToggle("AutoMeditateToggle", {
         Title = "Auto Meditate",
         Default = false,
-        Description = "automatically meditates for you"
+        Description = "glitch-optimized instant auto meditate"
     }):OnChanged(function(enabled)
-        if autoMeditateEnabled == enabled then return end
-        autoMeditateEnabled = enabled
-
         if enabled then
-            task.spawn(function()
-                while autoMeditateEnabled do
-                    game.ReplicatedStorage.RemoteEvents.Meditate:FireServer("Start")
-                    for _ = 1, 5 do
-                        if not autoMeditateEnabled then break end
-                        game.ReplicatedStorage.RemoteEvents["Create Key"]:FireServer("Complete")
-                        task.wait(0.1)
-                    end
-                    task.wait(1.5)
-                end
-            end)
+            if autoMeditateInstance then
+                autoMeditateInstance:stop()
+            end
+
+            autoMeditateInstance = AutoMeditate.new()
+        elseif autoMeditateInstance then
+            autoMeditateInstance:stop()
+            autoMeditateInstance = nil
         end
     end)
+
+    tabs.Meditation:AddButton({
+        Title = "Fire Meditation Stop",
+        Description = "fires the meditation Stop event once",
+        Callback = function()
+            local fired = pcall(fireMeditationStop)
+            if not fired then
+                Fluent:Notify({Title = "Meditation Stop", Content = "Unable to fire meditation stop event.", Duration = 3})
+            end
+        end
+    })
 
     -- Auto Spin
     local autoSpinFamilyEnabled = false
