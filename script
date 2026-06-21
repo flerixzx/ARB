@@ -1430,35 +1430,24 @@ if game.PlaceId == 96063223159256 then
         end)
     end
 
-    local spamMeditationStopEnabled = false
-    local meditationStopSpamCount = 20
-
     local function getMeditationStopEvent()
         local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-        return character:WaitForChild("Scripts")
-            :WaitForChild("Server")
-            :WaitForChild("Meditation")
-            :WaitForChild("Event")
+        local scripts = character:WaitForChild("Scripts")
+        local server = scripts:WaitForChild("Server")
+        local meditation = server:WaitForChild("Meditation")
+        return meditation:WaitForChild("Event")
     end
 
-    local function spamMeditationStop()
+    local function fireMeditationStop()
         local meditationStopEvent = getMeditationStopEvent()
         local args = {"Stop"}
-
-        for _ = 1, meditationStopSpamCount do
-            meditationStopEvent:FireServer(unpack(args))
-        end
+        meditationStopEvent:FireServer(unpack(args))
     end
 
     function AutoMeditate:startLoop()
         task.spawn(function()
             while self.active do
                 self.meditateRemote:FireServer("Start")
-
-                if spamMeditationStopEnabled then
-                    pcall(spamMeditationStop)
-                end
-
                 task.wait()
             end
         end)
@@ -1492,24 +1481,16 @@ if game.PlaceId == 96063223159256 then
         end
     end)
 
-    tabs.Meditation:AddToggle("SpamMeditationStopToggle", {
-        Title = "Spam Meditation Stop",
-        Default = false,
-        Description = "spams the meditation stop event while auto meditate is running"
-    }):OnChanged(function(enabled)
-        spamMeditationStopEnabled = enabled
-    end)
-
-    tabs.Meditation:AddSlider("MeditationStopSpamCountSlider", {
-        Title = "Stop Spam Amount",
-        Description = "number of Stop fires per auto meditate tick",
-        Default = meditationStopSpamCount,
-        Min = 1,
-        Max = 100,
-        Rounding = 0
-    }):OnChanged(function(value)
-        meditationStopSpamCount = math.clamp(math.floor(value), 1, 100)
-    end)
+    tabs.Meditation:AddButton({
+        Title = "Fire Meditation Stop",
+        Description = "fires the meditation Stop event once",
+        Callback = function()
+            local fired = pcall(fireMeditationStop)
+            if not fired then
+                Fluent:Notify({Title = "Meditation Stop", Content = "Unable to fire meditation stop event.", Duration = 3})
+            end
+        end
+    })
 
     -- Auto Spin
     local autoSpinFamilyEnabled = false
