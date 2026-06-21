@@ -1430,10 +1430,35 @@ if game.PlaceId == 96063223159256 then
         end)
     end
 
+    local spamMeditationStopEnabled = false
+    local meditationStopSpamCount = 20
+
+    local function getMeditationStopEvent()
+        local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        return character:WaitForChild("Scripts")
+            :WaitForChild("Server")
+            :WaitForChild("Meditation")
+            :WaitForChild("Event")
+    end
+
+    local function spamMeditationStop()
+        local meditationStopEvent = getMeditationStopEvent()
+        local args = {"Stop"}
+
+        for _ = 1, meditationStopSpamCount do
+            meditationStopEvent:FireServer(unpack(args))
+        end
+    end
+
     function AutoMeditate:startLoop()
         task.spawn(function()
             while self.active do
                 self.meditateRemote:FireServer("Start")
+
+                if spamMeditationStopEnabled then
+                    pcall(spamMeditationStop)
+                end
+
                 task.wait()
             end
         end)
@@ -1453,7 +1478,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Meditation:AddToggle("AutoMeditateToggle", {
         Title = "Auto Meditate",
         Default = false,
-        Description = "auto meditation"
+        Description = "glitch-optimized instant auto meditate"
     }):OnChanged(function(enabled)
         if enabled then
             if autoMeditateInstance then
@@ -1465,6 +1490,25 @@ if game.PlaceId == 96063223159256 then
             autoMeditateInstance:stop()
             autoMeditateInstance = nil
         end
+    end)
+
+    tabs.Meditation:AddToggle("SpamMeditationStopToggle", {
+        Title = "Spam Meditation Stop",
+        Default = false,
+        Description = "spams the meditation stop event while auto meditate is running"
+    }):OnChanged(function(enabled)
+        spamMeditationStopEnabled = enabled
+    end)
+
+    tabs.Meditation:AddSlider("MeditationStopSpamCountSlider", {
+        Title = "Stop Spam Amount",
+        Description = "number of Stop fires per auto meditate tick",
+        Default = meditationStopSpamCount,
+        Min = 1,
+        Max = 100,
+        Rounding = 0
+    }):OnChanged(function(value)
+        meditationStopSpamCount = math.clamp(math.floor(value), 1, 100)
     end)
 
     -- Auto Spin
