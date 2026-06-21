@@ -1430,20 +1430,6 @@ if game.PlaceId == 96063223159256 then
         end)
     end
 
-    local function getMeditationStopEvent()
-        local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-        local scripts = character:WaitForChild("Scripts")
-        local server = scripts:WaitForChild("Server")
-        local meditation = server:WaitForChild("Meditation")
-        return meditation:WaitForChild("Event")
-    end
-
-    local function fireMeditationStop()
-        local meditationStopEvent = getMeditationStopEvent()
-        local args = {"Stop"}
-        meditationStopEvent:FireServer(unpack(args))
-    end
-
     function AutoMeditate:startLoop()
         task.spawn(function()
             while self.active do
@@ -1467,7 +1453,7 @@ if game.PlaceId == 96063223159256 then
     tabs.Meditation:AddToggle("AutoMeditateToggle", {
         Title = "Auto Meditate",
         Default = false,
-        Description = "glitch-optimized instant auto meditate"
+        Description = "auto meditation"
     }):OnChanged(function(enabled)
         if enabled then
             if autoMeditateInstance then
@@ -1480,17 +1466,6 @@ if game.PlaceId == 96063223159256 then
             autoMeditateInstance = nil
         end
     end)
-
-    tabs.Meditation:AddButton({
-        Title = "Fire Meditation Stop",
-        Description = "fires the meditation Stop event once",
-        Callback = function()
-            local fired = pcall(fireMeditationStop)
-            if not fired then
-                Fluent:Notify({Title = "Meditation Stop", Content = "Unable to fire meditation stop event.", Duration = 3})
-            end
-        end
-    })
 
     -- Auto Spin
     local autoSpinFamilyEnabled = false
